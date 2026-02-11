@@ -1,0 +1,4 @@
+*.vrm
+anims/
+venv/
+__pycache__/
