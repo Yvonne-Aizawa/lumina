@@ -1,24 +1,80 @@
+import json
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from chat import ChatHandler
+from mcp_manager import MCPManager
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent
 ANIMS_DIR = BASE_DIR / "anims"
+CONFIG_PATH = BASE_DIR / "config.json"
 
-app = FastAPI()
-
-# --- WebSocket connection manager ---
+# --- Global state ---
 
 connected_clients: list[WebSocket] = []
+mcp_manager: MCPManager | None = None
+chat_handler: ChatHandler | None = None
+
+
+def load_config() -> dict:
+    if CONFIG_PATH.exists():
+        return json.loads(CONFIG_PATH.read_text())
+    return {"llm": {}, "system_prompt": "", "mcp_servers": {}}
+
+
+# --- App lifecycle ---
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global mcp_manager, chat_handler
+
+    config = load_config()
+
+    # Start MCP manager
+    mcp_manager = MCPManager()
+    # Support both "mcp_servers" and "mcpServers" (LM Studio format)
+    mcp_servers = config.get("mcp_servers") or config.get("mcpServers") or {}
+    await mcp_manager.start(mcp_servers)
+
+    # Create chat handler
+    chat_handler = ChatHandler(
+        llm_config=config.get("llm", {}),
+        system_prompt=config.get("system_prompt", "You are a helpful assistant."),
+        mcp_manager=mcp_manager,
+        animation_names=list_animations(),
+        play_animation_fn=play_animation,
+    )
+
+    log.info(f"Available animations: {list_animations()}")
+    log.info(
+        f"MCP tools: {[t['function']['name'] for t in mcp_manager.get_openai_tools()]}"
+    )
+
+    yield
+
+    # Shutdown
+    await mcp_manager.shutdown()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+# --- WebSocket ---
 
 
 async def broadcast(message: dict):
     """Send a JSON message to all connected browser clients."""
-    import json
-
     data = json.dumps(message)
     for ws in list(connected_clients):
         try:
@@ -64,15 +120,36 @@ async def api_play(animation_name: str):
     return {"status": "ok", "animation": animation_name}
 
 
+class ChatRequest(BaseModel):
+    message: str
+
+
+@app.post("/api/chat")
+async def api_chat(req: ChatRequest):
+    if chat_handler is None:
+        return {"error": "Chat not initialized"}
+    try:
+        response = await chat_handler.send_message(req.message)
+        return {"response": response}
+    except Exception as e:
+        log.exception("Chat error")
+        return {"error": str(e)}
+
+
+@app.post("/api/chat/clear")
+async def api_chat_clear():
+    if chat_handler:
+        chat_handler.clear_history()
+    return {"status": "ok"}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     connected_clients.append(ws)
     try:
         while True:
-            # Keep connection alive, handle any messages from browser
             data = await ws.receive_text()
-            # Could handle browser -> server messages here in the future
     except WebSocketDisconnect:
         connected_clients.remove(ws)
 
@@ -88,8 +165,5 @@ app.mount("/anims", StaticFiles(directory=str(ANIMS_DIR)), name="anims")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 if __name__ == "__main__":
-    print(f"Available animations: {list_animations()}")
-    print("Control animations via:")
-    print("  curl http://localhost:8000/api/animations")
-    print("  curl -X POST http://localhost:8000/api/play/Waving")
+    print("Starting server at http://localhost:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000)
