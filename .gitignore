@@ -1,4 +1,6 @@
 *.vrm
 anims/
+memories/
+soul/
 venv/
 __pycache__/

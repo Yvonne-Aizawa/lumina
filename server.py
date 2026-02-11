@@ -50,7 +50,6 @@ async def lifespan(app: FastAPI):
     # Create chat handler
     chat_handler = ChatHandler(
         llm_config=config.get("llm", {}),
-        system_prompt=config.get("system_prompt", "You are a helpful assistant."),
         mcp_manager=mcp_manager,
         animation_names=list_animations(),
         play_animation_fn=play_animation,

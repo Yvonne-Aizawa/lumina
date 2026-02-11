@@ -4,7 +4,6 @@
     "api_key": "unused",
     "model": "openai/gpt-oss-20b"
   },
-  "system_prompt": "You are a friendly assistant with a 3D avatar. You can play animations to express yourself.",
   "mcpServers": {
     "searxng": {
       "command": "npx",
