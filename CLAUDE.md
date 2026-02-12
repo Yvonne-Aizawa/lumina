@@ -25,7 +25,7 @@ python server.py
 
 **`app/server.py`** — FastAPI server. Manages app lifecycle (MCP startup/shutdown, heartbeat task), WebSocket connections to browsers, REST API endpoints. Routes: `/` (frontend), `/api/chat` (POST), `/api/animations` (GET), `/api/play/{name}` (POST), `/api/chat/clear` (POST), `/ws` (WebSocket).
 
-**`app/chat.py`** — Chat handler. Manages conversation history, LLM calls via OpenAI SDK, and tool execution loop (up to `MAX_TOOL_ROUNDS=10` iterations). Built-in tools: `play_animation`, `memory_create`, `memory_read`, `memory_edit`, `memory_delete`, `memory_list`. Also routes to MCP tools. The system prompt is built from `soul/` markdown files (excluding `heartbeat.md`), loaded once at init. Has a separate `heartbeat()` method for background prompts. An `asyncio.Lock` protects `_messages` for concurrency safety.
+**`app/chat.py`** — Chat handler. Manages conversation history, LLM calls via OpenAI SDK, and tool execution loop (up to `MAX_TOOL_ROUNDS=10` iterations). Built-in tools: `play_animation`, `memory_create`, `memory_read`, `memory_edit`, `memory_delete`, `memory_list`. Also routes to MCP tools. The system prompt is built from `state/soul/` markdown files (excluding `heartbeat.md`), loaded once at init. Has a separate `heartbeat()` method for background prompts. An `asyncio.Lock` protects `_messages` for concurrency safety.
 
 **`app/mcp_manager.py`** — MCP client manager. Connects to configured MCP servers via stdio on startup, discovers their tools, converts tool schemas to OpenAI function-calling format, and routes tool calls to the correct server session.
 
@@ -57,7 +57,7 @@ Browser chat input → POST /api/chat → ChatHandler.send_message()
 heartbeat_loop() runs every HEARTBEAT_INTERVAL (600s)
   → skips if user interacted within HEARTBEAT_IDLE_THRESHOLD (1200s)
   → skips if already waiting for user to respond
-  → ChatHandler.heartbeat() makes isolated LLM call with soul/heartbeat.md prompt
+  → ChatHandler.heartbeat() makes isolated LLM call with state/soul/heartbeat.md prompt
   → response broadcast via WebSocket {"action": "chat", "content": "..."}
   → heartbeat pauses until user sends next message
 ```
@@ -68,13 +68,13 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
 
 **`config.json`** — LLM endpoint and MCP servers. Supports both `mcp_servers` and `mcpServers` (LM Studio format) keys.
 
-**`soul/*.md`** — Personality/identity files loaded alphabetically into the system prompt at startup. `heartbeat.md` is excluded from the system prompt and used only by the heartbeat system. Restart server to pick up changes.
+**`state/soul/*.md`** — Personality/identity files loaded alphabetically into the system prompt at startup. `heartbeat.md` is excluded from the system prompt and used only by the heartbeat system. Restart server to pick up changes.
 
-**`memories/*.md`** — Persistent memory files created/managed by the LLM via tool calls. Filenames are sanitized to prevent path traversal.
+**`state/memories/*.md`** — Persistent memory files created/managed by the LLM via tool calls. Filenames are sanitized to prevent path traversal.
 
 ## Adding Animations
 
-Drop Mixamo FBX files (exported as **FBX Binary**, **Without Skin**) into `anims/` and restart. The filename stem becomes the animation name.
+Drop Mixamo FBX files (exported as **FBX Binary**, **Without Skin**) into `assets/anims/` and restart. The filename stem becomes the animation name.
 
 ## Animation Retargeting
 
@@ -82,7 +82,7 @@ Mixamo FBX animations are retargeted to VRM in the browser. `loadMixamoAnimation
 
 ## Git-ignored Assets
 
-`*.vrm`, `anims/`, `memories/`, `soul/`, `venv/`, `__pycache__/`
+`assets/`, `state/`, `venv/`, `__pycache__/`
 
 ## Dependencies
 

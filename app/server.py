@@ -19,7 +19,9 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 PROJECT_DIR = Path(__file__).parent.parent
-ANIMS_DIR = PROJECT_DIR / "anims"
+ASSETS_DIR = PROJECT_DIR / "assets"
+ANIMS_DIR = ASSETS_DIR / "anims"
+MODELS_DIR = ASSETS_DIR / "models"
 CONFIG_PATH = PROJECT_DIR / "config.json"
 HEARTBEAT_INTERVAL_DEFAULT = 600  # seconds (10 minutes)
 HEARTBEAT_IDLE_DEFAULT = 1200  # seconds (20 minutes)
@@ -255,7 +257,7 @@ async def websocket_endpoint(ws: WebSocket):
 # Serve VRM model file
 @app.get("/testavi.vrm")
 async def serve_vrm():
-    return FileResponse(PROJECT_DIR / "models/testavi.vrm")
+    return FileResponse(MODELS_DIR / "testavi.vrm")
 
 
 # Serve animation files and static assets

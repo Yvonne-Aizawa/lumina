@@ -14,10 +14,10 @@ log = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 10
 PROJECT_DIR = Path(__file__).parent.parent
-MEMORIES_DIR = PROJECT_DIR / "memories"
-SOUL_DIR = PROJECT_DIR / "soul"
+MEMORIES_DIR = PROJECT_DIR / "state" / "memories"
+SOUL_DIR = PROJECT_DIR / "state" / "soul"
 HEARTBEAT_PATH = SOUL_DIR / "heartbeat.md"
-STATE_PATH = PROJECT_DIR / "state.json"
+STATE_PATH = PROJECT_DIR / "state" / "state.json"
 
 
 def load_soul() -> str:
