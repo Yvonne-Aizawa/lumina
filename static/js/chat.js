@@ -25,10 +25,11 @@ function addToolCall(name, args) {
 function initChat() {
   const chatInput = document.getElementById("chat-input");
   const chatSend = document.getElementById("chat-send");
+  const chatMic = document.getElementById("chat-mic");
 
   let sending = false;
-  async function sendMessage() {
-    const text = chatInput.value.trim();
+  async function sendMessage(text) {
+    text = text || chatInput.value.trim();
     if (!text || sending) return;
 
     sending = true;
@@ -57,12 +58,88 @@ function initChat() {
     chatInput.focus();
   }
 
-  chatSend.addEventListener("click", sendMessage);
+  chatSend.addEventListener("click", () => sendMessage());
   chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       sendMessage();
     }
+  });
+
+  // --- STT mic button ---
+  fetch("/api/stt/status")
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.enabled) chatMic.classList.remove("hidden");
+    })
+    .catch(() => {});
+
+  let mediaRecorder = null;
+  let audioChunks = [];
+
+  function startRecording() {
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+        mediaRecorder.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          if (audioChunks.length === 0) return;
+
+          const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+          chatMic.textContent = "...";
+          chatMic.disabled = true;
+
+          try {
+            const form = new FormData();
+            form.append("file", blob, "recording.webm");
+            const res = await fetch("/api/transcribe", {
+              method: "POST",
+              body: form,
+            });
+            const data = await res.json();
+            if (data.text) {
+              sendMessage(data.text);
+            } else if (data.error) {
+              addMessage("assistant", `STT error: ${data.error}`);
+            }
+          } catch (e) {
+            addMessage("assistant", "STT request failed.");
+          }
+
+          chatMic.textContent = "Mic";
+          chatMic.disabled = false;
+          chatMic.classList.remove("recording");
+        };
+        mediaRecorder.start();
+        chatMic.classList.add("recording");
+      })
+      .catch((err) => {
+        console.warn("Mic access denied:", err);
+        addMessage("assistant", "Microphone access denied.");
+      });
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+    }
+  }
+
+  chatMic.addEventListener("mousedown", startRecording);
+  chatMic.addEventListener("mouseup", stopRecording);
+  chatMic.addEventListener("mouseleave", stopRecording);
+  chatMic.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    startRecording();
+  });
+  chatMic.addEventListener("touchend", (e) => {
+    e.preventDefault();
+    stopRecording();
   });
 }
 

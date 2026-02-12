@@ -4,3 +4,5 @@ openai
 mcp
 httpx
 requests
+faster-whisper
+nvidia-cublas-cu12

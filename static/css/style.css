@@ -126,6 +126,31 @@ canvas {
     cursor: pointer;
     backdrop-filter: blur(10px);
 }
-#chat-send:hover {
+#chat-send:hover,
+#chat-mic:hover {
     background: rgba(255, 255, 255, 0.25);
+}
+#chat-mic {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    font-family: sans-serif;
+    font-size: 16px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    user-select: none;
+    -webkit-user-select: none;
+}
+#chat-mic.hidden {
+    display: none;
+}
+#chat-mic.recording {
+    background: rgba(239, 68, 68, 0.7);
+    animation: pulse 1s ease-in-out infinite;
+}
+#chat-mic:disabled {
+    opacity: 0.5;
+    cursor: default;
 }

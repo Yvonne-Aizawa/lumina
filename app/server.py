@@ -2,12 +2,13 @@ import asyncio
 import base64
 import json
 import logging
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -37,6 +38,8 @@ heartbeat_idle_threshold: int = HEARTBEAT_IDLE_DEFAULT
 last_user_interaction: float = 0.0
 heartbeat_waiting_for_user: bool = False
 tts_config: dict | None = None
+stt_model = None
+stt_enabled: bool = False
 
 
 def load_config() -> dict:
@@ -79,6 +82,7 @@ async def heartbeat_loop():
 async def lifespan(app: FastAPI):
     global mcp_manager, chat_handler, heartbeat_task
     global heartbeat_interval, heartbeat_idle_threshold, tts_config
+    global stt_model, stt_enabled
 
     config = load_config()
 
@@ -107,6 +111,53 @@ async def lifespan(app: FastAPI):
     if tts_cfg.get("enabled"):
         tts_config = tts_cfg
         log.info(f"TTS enabled (server: {tts_cfg['base_url']})")
+
+    # Load STT model if enabled
+    stt_cfg = config.get("stt", {})
+    if stt_cfg.get("enabled"):
+        try:
+            # Ensure pip-installed NVIDIA libs are discoverable
+            try:
+                import os
+
+                import nvidia.cublas
+                import nvidia.cudnn
+
+                for pkg in (nvidia.cublas, nvidia.cudnn):
+                    lib_dir = os.path.join(pkg.__path__[0], "lib")
+                    if lib_dir not in os.environ.get("LD_LIBRARY_PATH", ""):
+                        os.environ["LD_LIBRARY_PATH"] = (
+                            lib_dir + ":" + os.environ.get("LD_LIBRARY_PATH", "")
+                        )
+                        import ctypes
+
+                        for lib in os.listdir(lib_dir):
+                            if lib.endswith(".so") or ".so." in lib:
+                                try:
+                                    ctypes.cdll.LoadLibrary(os.path.join(lib_dir, lib))
+                                except OSError:
+                                    pass
+            except ImportError:
+                pass
+
+            from faster_whisper import WhisperModel
+
+            stt_model_size = stt_cfg.get("model", "large-v3")
+            stt_device = stt_cfg.get("device", "auto")
+            stt_compute = stt_cfg.get("compute_type", "float16")
+            log.info(
+                f"Loading STT model: {stt_model_size} (device={stt_device}, compute={stt_compute})"
+            )
+            stt_model = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: WhisperModel(
+                    stt_model_size, device=stt_device, compute_type=stt_compute
+                ),
+            )
+            stt_enabled = True
+            log.info("STT model loaded")
+        except Exception:
+            log.exception("Failed to load STT model")
 
     # Start background heartbeat if enabled
     hb_config = config.get("heartbeat", {})
@@ -241,6 +292,32 @@ async def api_chat_clear():
     if chat_handler:
         chat_handler.clear_history()
     return {"status": "ok"}
+
+
+@app.get("/api/stt/status")
+async def api_stt_status():
+    return {"enabled": stt_enabled}
+
+
+@app.post("/api/transcribe")
+async def api_transcribe(file: UploadFile):
+    if not stt_enabled or stt_model is None:
+        return {"error": "STT not enabled"}
+    try:
+        audio_bytes = await file.read()
+
+        def _transcribe():
+            with tempfile.NamedTemporaryFile(suffix=".webm", delete=True) as tmp:
+                tmp.write(audio_bytes)
+                tmp.flush()
+                segments, _ = stt_model.transcribe(tmp.name)
+                return "".join(s.text for s in segments).strip()
+
+        text = await asyncio.get_event_loop().run_in_executor(None, _transcribe)
+        return {"text": text}
+    except Exception as e:
+        log.exception("STT transcription error")
+        return {"error": str(e)}
 
 
 @app.websocket("/ws")
