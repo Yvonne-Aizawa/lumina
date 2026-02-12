@@ -5,3 +5,4 @@ soul/
 venv/
 __pycache__/
 state.json
+config.json
