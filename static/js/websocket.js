@@ -1,33 +1,36 @@
 import { playAnimationByName } from "./animations.js";
+import { addMessage } from "./chat.js";
 
 function connectWebSocket() {
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${location.host}/ws`);
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(`${protocol}//${location.host}/ws`);
 
-    ws.onopen = () => {
-        console.log("WebSocket connected");
-    };
+  ws.onopen = () => {
+    console.log("WebSocket connected");
+  };
 
-    ws.onmessage = (event) => {
-        try {
-            const msg = JSON.parse(event.data);
-            if (msg.action === "play" && msg.animation) {
-                playAnimationByName(msg.animation);
-            }
-        } catch (e) {
-            console.warn("Invalid WebSocket message:", event.data);
-        }
-    };
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.action === "play" && msg.animation) {
+        playAnimationByName(msg.animation);
+      } else if (msg.action === "chat" && msg.content) {
+        addMessage("assistant", msg.content);
+      }
+    } catch (e) {
+      console.warn("Invalid WebSocket message:", event.data);
+    }
+  };
 
-    ws.onclose = () => {
-        console.log("WebSocket disconnected, reconnecting in 2s...");
-        setTimeout(connectWebSocket, 2000);
-    };
+  ws.onclose = () => {
+    console.log("WebSocket disconnected, reconnecting in 2s...");
+    setTimeout(connectWebSocket, 2000);
+  };
 
-    ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
-        ws.close();
-    };
+  ws.onerror = (err) => {
+    console.error("WebSocket error:", err);
+    ws.close();
+  };
 }
 
 export { connectWebSocket };

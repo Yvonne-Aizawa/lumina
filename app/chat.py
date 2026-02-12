@@ -1,5 +1,6 @@
 """Chat handler — manages conversation, LLM calls, and tool execution."""
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -14,6 +15,7 @@ MAX_TOOL_ROUNDS = 10
 PROJECT_DIR = Path(__file__).parent.parent
 MEMORIES_DIR = PROJECT_DIR / "memories"
 SOUL_DIR = PROJECT_DIR / "soul"
+HEARTBEAT_PATH = SOUL_DIR / "heartbeat.md"
 
 
 def load_soul() -> str:
@@ -22,6 +24,8 @@ def load_soul() -> str:
         return "You are a helpful assistant."
     parts = []
     for path in sorted(SOUL_DIR.glob("*.md")):
+        if path == HEARTBEAT_PATH:
+            continue
         parts.append(path.read_text(encoding="utf-8").strip())
     return "\n\n".join(parts) if parts else "You are a helpful assistant."
 
@@ -46,6 +50,7 @@ class ChatHandler:
 
         # Conversation history (in-memory, single session)
         self._messages: list[dict] = []
+        self._lock = asyncio.Lock()
 
     def _get_builtin_tools(self) -> list[dict]:
         return [
@@ -246,13 +251,14 @@ class ChatHandler:
 
     async def send_message(self, user_text: str) -> str:
         """Process a user message through the LLM with tool support."""
-        self._messages.append({"role": "user", "content": user_text})
+        async with self._lock:
+            self._messages.append({"role": "user", "content": user_text})
 
-        tools = self._get_all_tools()
-        messages = [
-            {"role": "system", "content": self._soul},
-            *self._messages,
-        ]
+            tools = self._get_all_tools()
+            messages = [
+                {"role": "system", "content": self._soul},
+                *self._messages,
+            ]
 
         for _ in range(MAX_TOOL_ROUNDS):
             kwargs = {"model": self._model, "messages": messages}
@@ -289,11 +295,67 @@ class ChatHandler:
 
             # No tool calls — we have a final text response
             assistant_text = choice.message.content or ""
-            self._messages.append({"role": "assistant", "content": assistant_text})
+            async with self._lock:
+                self._messages.append({"role": "assistant", "content": assistant_text})
             return assistant_text
 
         # Exhausted tool rounds
         return "I'm having trouble processing that request. Please try again."
+
+    async def heartbeat(self) -> str | None:
+        """Run a background heartbeat prompt in an isolated thread. Returns response text or None."""
+        if not HEARTBEAT_PATH.exists():
+            return None
+        heartbeat_prompt = HEARTBEAT_PATH.read_text(encoding="utf-8").strip()
+        if not heartbeat_prompt:
+            return None
+
+        messages = [
+            {"role": "system", "content": self._soul},
+            {"role": "user", "content": heartbeat_prompt},
+        ]
+
+        tools = self._get_all_tools()
+        kwargs = {"model": self._model, "messages": messages}
+        if tools:
+            kwargs["tools"] = tools
+
+        try:
+            for _ in range(MAX_TOOL_ROUNDS):
+                response = await self._client.chat.completions.create(**kwargs)
+                choice = response.choices[0]
+
+                if choice.finish_reason == "tool_calls" or choice.message.tool_calls:
+                    messages.append(choice.message.model_dump())
+
+                    for tool_call in choice.message.tool_calls:
+                        fn_name = tool_call.function.name
+                        try:
+                            fn_args = json.loads(tool_call.function.arguments)
+                        except json.JSONDecodeError:
+                            fn_args = {}
+
+                        log.info(f"Heartbeat tool call: {fn_name}({fn_args})")
+                        result = await self._handle_tool_call(fn_name, fn_args)
+
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": result,
+                            }
+                        )
+
+                    kwargs["messages"] = messages
+                    continue
+
+                assistant_text = (choice.message.content or "").strip()
+                if assistant_text:
+                    return assistant_text
+                return None
+        except Exception:
+            log.exception("Heartbeat error")
+        return None
 
     def clear_history(self):
         """Reset conversation history."""
