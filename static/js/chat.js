@@ -8,6 +8,20 @@ function addMessage(role, text) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+function addToolCall(name, args) {
+  const el = document.createElement("div");
+  el.className = "chat-msg tool-call";
+  const argsStr =
+    args && Object.keys(args).length
+      ? Object.entries(args)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(", ")
+      : "";
+  el.textContent = argsStr ? `${name}(${argsStr})` : `${name}()`;
+  chatMessages.appendChild(el);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
 function initChat() {
   const chatInput = document.getElementById("chat-input");
   const chatSend = document.getElementById("chat-send");
@@ -52,4 +66,4 @@ function initChat() {
   });
 }
 
-export { addMessage, initChat };
+export { addMessage, addToolCall, initChat };

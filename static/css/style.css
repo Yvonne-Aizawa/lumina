@@ -24,6 +24,31 @@ canvas {
     font-size: 14px;
     pointer-events: none;
 }
+#heartbeat-indicator {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(139, 92, 246, 0.8);
+    pointer-events: none;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+#heartbeat-indicator.hidden {
+    display: none;
+}
+@keyframes pulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.4;
+        transform: scale(0.8);
+    }
+}
 #chat-container {
     position: absolute;
     bottom: 32px;
@@ -62,6 +87,14 @@ canvas {
     background: rgba(0, 0, 0, 0.6);
     color: #fff;
     align-self: flex-start;
+}
+.chat-msg.tool-call {
+    background: rgba(139, 92, 246, 0.5);
+    color: rgba(255, 255, 255, 0.85);
+    align-self: flex-start;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 4px 10px;
 }
 #chat {
     display: flex;

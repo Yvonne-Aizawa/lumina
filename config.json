@@ -4,6 +4,11 @@
     "api_key": "unused",
     "model": "openai/gpt-oss-20b"
   },
+  "heartbeat": {
+    "enabled": false,
+    "interval": 20,
+    "idle_threshold": 10
+  },
   "mcpServers": {
     "searxng": {
       "command": "npx",
@@ -11,6 +16,10 @@
       "env": {
         "SEARXNG_URL": "http://localhost:8888"
       }
+    },
+    "time-server": {
+      "command": "npx",
+      "args": ["@mcpcentral/mcp-time"]
     }
   }
 }

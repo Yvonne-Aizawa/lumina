@@ -1,5 +1,7 @@
 import { playAnimationByName } from "./animations.js";
-import { addMessage } from "./chat.js";
+import { addMessage, addToolCall } from "./chat.js";
+
+const heartbeatIndicator = document.getElementById("heartbeat-indicator");
 
 function connectWebSocket() {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -16,6 +18,10 @@ function connectWebSocket() {
         playAnimationByName(msg.animation);
       } else if (msg.action === "chat" && msg.content) {
         addMessage("assistant", msg.content);
+      } else if (msg.action === "tool_call" && msg.name) {
+        addToolCall(msg.name, msg.arguments);
+      } else if (msg.action === "heartbeat") {
+        heartbeatIndicator.classList.toggle("hidden", msg.status !== "start");
       }
     } catch (e) {
       console.warn("Invalid WebSocket message:", event.data);

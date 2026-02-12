@@ -19,8 +19,8 @@ log = logging.getLogger(__name__)
 PROJECT_DIR = Path(__file__).parent.parent
 ANIMS_DIR = PROJECT_DIR / "anims"
 CONFIG_PATH = PROJECT_DIR / "config.json"
-HEARTBEAT_INTERVAL = 20  # seconds (10 minutes)
-HEARTBEAT_IDLE_THRESHOLD = 10  # seconds (20 minutes) of no user interaction
+HEARTBEAT_INTERVAL_DEFAULT = 600  # seconds (10 minutes)
+HEARTBEAT_IDLE_DEFAULT = 1200  # seconds (20 minutes)
 
 # --- Global state ---
 
@@ -28,6 +28,8 @@ connected_clients: list[WebSocket] = []
 mcp_manager: MCPManager | None = None
 chat_handler: ChatHandler | None = None
 heartbeat_task: asyncio.Task | None = None
+heartbeat_interval: int = HEARTBEAT_INTERVAL_DEFAULT
+heartbeat_idle_threshold: int = HEARTBEAT_IDLE_DEFAULT
 last_user_interaction: float = 0.0
 heartbeat_waiting_for_user: bool = False
 
@@ -45,27 +47,32 @@ async def heartbeat_loop():
     """Periodically prompt the LLM via heartbeat when the user has been idle."""
     global heartbeat_waiting_for_user
     while True:
-        await asyncio.sleep(HEARTBEAT_INTERVAL)
+        await asyncio.sleep(heartbeat_interval)
         if chat_handler is None:
             continue
         if heartbeat_waiting_for_user:
             continue
         idle_time = time.monotonic() - last_user_interaction
-        if idle_time < HEARTBEAT_IDLE_THRESHOLD:
+        if idle_time < heartbeat_idle_threshold:
             continue
         try:
-            response = await chat_handler.heartbeat()
-            if response:
-                log.info(f"Heartbeat response: {response[:100]}")
-                await broadcast({"action": "chat", "content": response})
+            await broadcast({"action": "heartbeat", "status": "start"})
+            sent = await chat_handler.heartbeat()
+            await broadcast({"action": "heartbeat", "status": "end"})
+            if sent:
+                for text in sent:
+                    log.info(f"Heartbeat message: {text[:100]}")
+                    await broadcast({"action": "chat", "content": text})
                 heartbeat_waiting_for_user = True
         except Exception:
+            await broadcast({"action": "heartbeat", "status": "end"})
             log.exception("Heartbeat loop error")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global mcp_manager, chat_handler, heartbeat_task
+    global heartbeat_interval, heartbeat_idle_threshold
 
     config = load_config()
 
@@ -81,6 +88,7 @@ async def lifespan(app: FastAPI):
         mcp_manager=mcp_manager,
         animation_names=list_animations(),
         play_animation_fn=play_animation,
+        notify_tool_call_fn=notify_tool_call,
     )
 
     log.info(f"Available animations: {list_animations()}")
@@ -88,17 +96,27 @@ async def lifespan(app: FastAPI):
         f"MCP tools: {[t['function']['name'] for t in mcp_manager.get_openai_tools()]}"
     )
 
-    # Start background heartbeat
-    heartbeat_task = asyncio.create_task(heartbeat_loop())
+    # Start background heartbeat if enabled
+    hb_config = config.get("heartbeat", {})
+    if hb_config.get("enabled", False):
+        heartbeat_interval = hb_config.get("interval", HEARTBEAT_INTERVAL_DEFAULT)
+        heartbeat_idle_threshold = hb_config.get(
+            "idle_threshold", HEARTBEAT_IDLE_DEFAULT
+        )
+        heartbeat_task = asyncio.create_task(heartbeat_loop())
+        log.info(
+            f"Heartbeat enabled (interval={heartbeat_interval}s, idle_threshold={heartbeat_idle_threshold}s)"
+        )
 
     yield
 
     # Shutdown
-    heartbeat_task.cancel()
-    try:
-        await heartbeat_task
-    except asyncio.CancelledError:
-        pass
+    if heartbeat_task:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
     await mcp_manager.shutdown()
 
 
@@ -131,6 +149,11 @@ def list_animations() -> list[str]:
 async def play_animation(name: str):
     """Send a play command to all connected browsers."""
     await broadcast({"action": "play", "animation": name})
+
+
+async def notify_tool_call(name: str, arguments: dict):
+    """Broadcast a tool call notification to all connected browsers."""
+    await broadcast({"action": "tool_call", "name": name, "arguments": arguments})
 
 
 # --- Routes ---
