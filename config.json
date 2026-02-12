@@ -4,6 +4,14 @@
     "api_key": "unused",
     "model": "openai/gpt-oss-20b"
   },
+  "tts": {
+    "enabled": true,
+    "base_url": "http://127.0.0.1:9880",
+    "ref_audio_path": "audio/cut.mp3",
+    "prompt_text": "I am Astrologist Mona Megistus, meaning The Great Astrologist Mona.",
+    "prompt_lang": "en",
+    "text_lang": "en"
+  },
   "heartbeat": {
     "enabled": false,
     "interval": 20,

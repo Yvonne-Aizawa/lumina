@@ -20,6 +20,11 @@ function connectWebSocket() {
         addMessage("assistant", msg.content);
       } else if (msg.action === "tool_call" && msg.name) {
         addToolCall(msg.name, msg.arguments);
+      } else if (msg.action === "audio" && msg.data) {
+        const bytes = Uint8Array.from(atob(msg.data), (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: "audio/wav" });
+        const audio = new Audio(URL.createObjectURL(blob));
+        audio.play().catch((e) => console.warn("Audio playback failed:", e));
       } else if (msg.action === "heartbeat") {
         heartbeatIndicator.classList.toggle("hidden", msg.status !== "start");
       }
