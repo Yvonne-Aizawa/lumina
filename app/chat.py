@@ -6,14 +6,14 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
-from mcp_manager import MCPManager
+from .mcp_manager import MCPManager
 
 log = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 10
-BASE_DIR = Path(__file__).parent
-MEMORIES_DIR = BASE_DIR / "memories"
-SOUL_DIR = BASE_DIR / "soul"
+PROJECT_DIR = Path(__file__).parent.parent
+MEMORIES_DIR = PROJECT_DIR / "memories"
+SOUL_DIR = PROJECT_DIR / "soul"
 
 
 def load_soul() -> str:
