@@ -14,6 +14,7 @@
                 }
             }
         </script>
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.js"></script>
     </head>
     <body>
         <div id="info">Loading...</div>
@@ -27,6 +28,13 @@
                     placeholder="Type a message..."
                     autocomplete="off"
                 />
+                <button
+                    id="wakeword-toggle"
+                    class="hidden"
+                    title="Toggle wake word"
+                >
+                    Wake
+                </button>
                 <button id="chat-mic" class="hidden" title="Hold to record">
                     Mic
                 </button>

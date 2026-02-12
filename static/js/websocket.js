@@ -1,7 +1,9 @@
 import { playAnimationByName } from "./animations.js";
 import { addMessage, addToolCall } from "./chat.js";
+import { pauseWakeWord, resumeWakeWord } from "./wakeword.js";
 
 const heartbeatIndicator = document.getElementById("heartbeat-indicator");
+let currentAudio = null;
 
 function connectWebSocket() {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -21,10 +23,32 @@ function connectWebSocket() {
       } else if (msg.action === "tool_call" && msg.name) {
         addToolCall(msg.name, msg.arguments);
       } else if (msg.action === "audio" && msg.data) {
+        // Stop any currently playing audio to prevent overlapping
+        if (currentAudio) {
+          currentAudio.onended = null;
+          currentAudio.onerror = null;
+          currentAudio.pause();
+          currentAudio = null;
+        }
+        if (document.hidden) return;
+        pauseWakeWord();
         const bytes = Uint8Array.from(atob(msg.data), (c) => c.charCodeAt(0));
         const blob = new Blob([bytes], { type: "audio/wav" });
         const audio = new Audio(URL.createObjectURL(blob));
-        audio.play().catch((e) => console.warn("Audio playback failed:", e));
+        currentAudio = audio;
+        audio.onended = () => {
+          currentAudio = null;
+          resumeWakeWord();
+        };
+        audio.onerror = () => {
+          currentAudio = null;
+          resumeWakeWord();
+        };
+        audio.play().catch((e) => {
+          console.warn("Audio playback failed:", e);
+          currentAudio = null;
+          resumeWakeWord();
+        });
       } else if (msg.action === "heartbeat") {
         heartbeatIndicator.classList.toggle("hidden", msg.status !== "start");
       }

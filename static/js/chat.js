@@ -1,4 +1,9 @@
 const chatMessages = document.getElementById("chat-messages");
+const chatInput = document.getElementById("chat-input");
+const chatSend = document.getElementById("chat-send");
+const chatMic = document.getElementById("chat-mic");
+
+let sending = false;
 
 function addMessage(role, text) {
   const el = document.createElement("div");
@@ -22,42 +27,37 @@ function addToolCall(name, args) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function initChat() {
-  const chatInput = document.getElementById("chat-input");
-  const chatSend = document.getElementById("chat-send");
-  const chatMic = document.getElementById("chat-mic");
+async function sendMessage(text) {
+  text = text || chatInput.value.trim();
+  if (!text || sending) return;
 
-  let sending = false;
-  async function sendMessage(text) {
-    text = text || chatInput.value.trim();
-    if (!text || sending) return;
+  sending = true;
+  chatInput.value = "";
+  chatSend.disabled = true;
+  addMessage("user", text);
 
-    sending = true;
-    chatInput.value = "";
-    chatSend.disabled = true;
-    addMessage("user", text);
-
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
-      });
-      const data = await res.json();
-      if (data.response) {
-        addMessage("assistant", data.response);
-      } else if (data.error) {
-        addMessage("assistant", `Error: ${data.error}`);
-      }
-    } catch (e) {
-      addMessage("assistant", "Failed to reach server.");
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text }),
+    });
+    const data = await res.json();
+    if (data.response) {
+      addMessage("assistant", data.response);
+    } else if (data.error) {
+      addMessage("assistant", `Error: ${data.error}`);
     }
-
-    sending = false;
-    chatSend.disabled = false;
-    chatInput.focus();
+  } catch (e) {
+    addMessage("assistant", "Failed to reach server.");
   }
 
+  sending = false;
+  chatSend.disabled = false;
+  chatInput.focus();
+}
+
+function initChat() {
   chatSend.addEventListener("click", () => sendMessage());
   chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -143,4 +143,4 @@ function initChat() {
   });
 }
 
-export { addMessage, addToolCall, initChat };
+export { addMessage, addToolCall, sendMessage, initChat };

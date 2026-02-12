@@ -40,6 +40,8 @@ heartbeat_waiting_for_user: bool = False
 tts_config: dict | None = None
 stt_model = None
 stt_enabled: bool = False
+stt_language: str | None = None
+wakeword_keyword: str = "hey_jarvis"
 
 
 def load_config() -> dict:
@@ -82,7 +84,7 @@ async def heartbeat_loop():
 async def lifespan(app: FastAPI):
     global mcp_manager, chat_handler, heartbeat_task
     global heartbeat_interval, heartbeat_idle_threshold, tts_config
-    global stt_model, stt_enabled
+    global stt_model, stt_enabled, stt_language, wakeword_keyword
 
     config = load_config()
 
@@ -155,9 +157,15 @@ async def lifespan(app: FastAPI):
                 ),
             )
             stt_enabled = True
-            log.info("STT model loaded")
+            stt_language = stt_cfg.get("language")
+            log.info(f"STT model loaded (language={stt_language or 'auto'})")
         except Exception:
             log.exception("Failed to load STT model")
+
+    # Load wake word config
+    ww_cfg = config.get("wakeword", {})
+    if ww_cfg.get("keyword"):
+        wakeword_keyword = ww_cfg["keyword"]
 
     # Start background heartbeat if enabled
     hb_config = config.get("heartbeat", {})
@@ -296,7 +304,7 @@ async def api_chat_clear():
 
 @app.get("/api/stt/status")
 async def api_stt_status():
-    return {"enabled": stt_enabled}
+    return {"enabled": stt_enabled, "wakeword": wakeword_keyword}
 
 
 @app.post("/api/transcribe")
@@ -310,7 +318,7 @@ async def api_transcribe(file: UploadFile):
             with tempfile.NamedTemporaryFile(suffix=".webm", delete=True) as tmp:
                 tmp.write(audio_bytes)
                 tmp.flush()
-                segments, _ = stt_model.transcribe(tmp.name)
+                segments, _ = stt_model.transcribe(tmp.name, language=stt_language)
                 return "".join(s.text for s in segments).strip()
 
         text = await asyncio.get_event_loop().run_in_executor(None, _transcribe)
