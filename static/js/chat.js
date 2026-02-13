@@ -63,6 +63,19 @@ async function sendMessage(text) {
   chatInput.focus();
 }
 
+function clearMessages() {
+  chatMessages.innerHTML = "";
+}
+
+function loadMessages(messages) {
+  clearMessages();
+  for (const msg of messages) {
+    if (msg.role === "user" || msg.role === "assistant") {
+      addMessage(msg.role, msg.content);
+    }
+  }
+}
+
 function setShowToolCalls(value) {
   showToolCalls = value;
   localStorage.setItem("showToolCalls", showToolCalls);
@@ -166,6 +179,8 @@ export {
   addToolCall,
   sendMessage,
   initChat,
+  clearMessages,
+  loadMessages,
   setShowToolCalls,
   getShowToolCalls,
 };

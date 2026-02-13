@@ -142,6 +142,39 @@ async def api_chat_clear():
     return {"status": "ok"}
 
 
+@app.get("/api/chats")
+async def api_chats():
+    if chat_handler is None:
+        return {"sessions": []}
+    return {
+        "sessions": chat_handler.list_sessions(),
+        "current": chat_handler.current_session_id,
+    }
+
+
+class ChatLoadRequest(BaseModel):
+    id: str
+
+
+@app.post("/api/chats/new")
+async def api_chats_new():
+    if chat_handler is None:
+        return {"error": "Chat not initialized"}
+    chat_handler.clear_history()
+    return {"status": "ok", "id": chat_handler.current_session_id}
+
+
+@app.post("/api/chats/load")
+async def api_chats_load(req: ChatLoadRequest):
+    if chat_handler is None:
+        return {"error": "Chat not initialized"}
+    try:
+        messages = chat_handler.load_session(req.id)
+        return {"status": "ok", "id": req.id, "messages": messages}
+    except FileNotFoundError as e:
+        return {"error": str(e)}
+
+
 @app.get("/api/stt/status")
 async def api_stt_status():
     from .stt import (

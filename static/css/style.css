@@ -228,6 +228,62 @@ canvas {
     cursor: pointer;
     flex-shrink: 0;
 }
+.settings-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 4px 0;
+}
+#new-chat-btn {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(59, 130, 246, 0.6);
+    color: #fff;
+    font-family: sans-serif;
+    font-size: 14px;
+    cursor: pointer;
+}
+#new-chat-btn:hover {
+    background: rgba(59, 130, 246, 0.8);
+}
+#chat-list-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+#chat-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.chat-list-item {
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.chat-list-item:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+.chat-list-item.active {
+    background: rgba(139, 92, 246, 0.4);
+    color: #fff;
+}
+.chat-list-item .chat-date {
+    flex: 1;
+}
+.chat-list-item .chat-count {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-left: 8px;
+}
 #settings-overlay {
     position: fixed;
     top: 0;

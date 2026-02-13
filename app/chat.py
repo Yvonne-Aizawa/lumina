@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,8 +20,10 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 10
-SOUL_DIR = Path(__file__).parent.parent / "state" / "soul"
+PROJECT_DIR = Path(__file__).parent.parent
+SOUL_DIR = PROJECT_DIR / "state" / "soul"
 HEARTBEAT_PATH = SOUL_DIR / "heartbeat.md"
+CHATS_DIR = PROJECT_DIR / "state" / "chats"
 
 
 def load_soul() -> str:
@@ -62,6 +65,78 @@ class ChatHandler:
         # Conversation history (in-memory, single session)
         self._messages: list[dict] = []
         self._lock = asyncio.Lock()
+        self._chat_id: str | None = None
+        self._chat_path: Path | None = None
+
+        self._new_session()
+
+    # --- Session persistence ---
+
+    def _new_session(self):
+        """Start a new chat session."""
+        CHATS_DIR.mkdir(parents=True, exist_ok=True)
+        now = datetime.now(timezone.utc)
+        self._chat_id = now.strftime("%Y-%m-%dT%H-%M-%S")
+        self._chat_path = CHATS_DIR / f"{self._chat_id}.json"
+        self._messages = []
+        self._save()
+
+    def _save(self):
+        """Persist current session to disk."""
+        if not self._chat_path:
+            return
+        data = {
+            "id": self._chat_id,
+            "started_at": self._chat_id.replace("T", "T").replace("-", "-"),
+            "messages": self._messages,
+        }
+        # Reconstruct proper ISO timestamp from id
+        try:
+            parts = self._chat_id.split("T")
+            date_part = parts[0]
+            time_part = parts[1].replace("-", ":")
+            data["started_at"] = f"{date_part}T{time_part}+00:00"
+        except (IndexError, ValueError):
+            data["started_at"] = self._chat_id
+        self._chat_path.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+    def list_sessions(self) -> list[dict]:
+        """Return list of saved sessions, newest first."""
+        CHATS_DIR.mkdir(parents=True, exist_ok=True)
+        sessions = []
+        for path in sorted(CHATS_DIR.glob("*.json"), reverse=True):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                sessions.append(
+                    {
+                        "id": data.get("id", path.stem),
+                        "started_at": data.get("started_at", ""),
+                        "message_count": len(data.get("messages", [])),
+                    }
+                )
+            except (json.JSONDecodeError, OSError):
+                continue
+        return sessions
+
+    def load_session(self, chat_id: str) -> list[dict]:
+        """Load an existing session by id. Returns the messages."""
+        safe_id = Path(chat_id).name  # prevent path traversal
+        path = CHATS_DIR / f"{safe_id}.json"
+        if not path.exists():
+            raise FileNotFoundError(f"Chat session '{chat_id}' not found.")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        self._chat_id = safe_id
+        self._chat_path = path
+        self._messages = data.get("messages", [])
+        return self._messages
+
+    @property
+    def current_session_id(self) -> str | None:
+        return self._chat_id
+
+    # --- Tools ---
 
     def _get_all_tools(self) -> list[dict]:
         return (
@@ -81,10 +156,13 @@ class ChatHandler:
             mcp_manager=self._mcp,
         )
 
+    # --- Chat ---
+
     async def send_message(self, user_text: str) -> str:
         """Process a user message through the LLM with tool support."""
         async with self._lock:
             self._messages.append({"role": "user", "content": user_text})
+            self._save()
 
             tools = self._get_all_tools()
             messages = [
@@ -131,10 +209,13 @@ class ChatHandler:
             assistant_text = choice.message.content or ""
             async with self._lock:
                 self._messages.append({"role": "assistant", "content": assistant_text})
+                self._save()
             return assistant_text
 
         # Exhausted tool rounds
         return "I'm having trouble processing that request. Please try again."
+
+    # --- Heartbeat ---
 
     def _get_heartbeat_tools(self) -> list[dict]:
         """Tools available during heartbeat — includes a send_message tool."""
@@ -229,8 +310,9 @@ class ChatHandler:
             async with self._lock:
                 for text in sent_messages:
                     self._messages.append({"role": "assistant", "content": text})
+                self._save()
         return sent_messages or None
 
     def clear_history(self):
-        """Reset conversation history."""
-        self._messages.clear()
+        """Start a new chat session (old session stays on disk)."""
+        self._new_session()
