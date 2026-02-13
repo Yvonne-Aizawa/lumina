@@ -67,7 +67,9 @@ async function loadEngine() {
   loaded = true;
 
   engine.on("detect", ({ keyword, score }) => {
-    console.log(`Wake word detected: ${keyword} (${score.toFixed(2)})`);
+    console.log(
+      `Wake word detected: ${keyword} (${score.toFixed(2)}) recording=${recording} paused=${paused}`,
+    );
     if (!recording && !paused) {
       const btn = document.getElementById("wakeword-toggle");
       btn.classList.add("detected");
