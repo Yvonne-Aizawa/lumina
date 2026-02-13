@@ -1,19 +1,22 @@
 """Heartbeat system — periodically prompts the LLM when the user is idle."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from .broadcast import broadcast
 from .tts import synthesize_and_broadcast
 
+if TYPE_CHECKING:
+    from .config import HeartbeatConfig
+
 log = logging.getLogger(__name__)
 
-HEARTBEAT_INTERVAL_DEFAULT = 600  # seconds (10 minutes)
-HEARTBEAT_IDLE_DEFAULT = 1200  # seconds (20 minutes)
-
-heartbeat_interval: int = HEARTBEAT_INTERVAL_DEFAULT
-heartbeat_idle_threshold: int = HEARTBEAT_IDLE_DEFAULT
+heartbeat_interval: int = 600
+heartbeat_idle_threshold: int = 1200
 last_user_interaction: float = 0.0
 heartbeat_waiting_for_user: bool = False
 
@@ -52,16 +55,15 @@ async def _heartbeat_loop(chat_handler):
             log.exception("Heartbeat loop error")
 
 
-def start_heartbeat(config: dict, chat_handler) -> asyncio.Task | None:
+def start_heartbeat(config: HeartbeatConfig, chat_handler) -> asyncio.Task | None:
     """Start the heartbeat background task if enabled. Returns the task or None."""
     global heartbeat_interval, heartbeat_idle_threshold
 
-    hb_config = config.get("heartbeat", {})
-    if not hb_config.get("enabled", False):
+    if not config.enabled:
         return None
 
-    heartbeat_interval = hb_config.get("interval", HEARTBEAT_INTERVAL_DEFAULT)
-    heartbeat_idle_threshold = hb_config.get("idle_threshold", HEARTBEAT_IDLE_DEFAULT)
+    heartbeat_interval = config.interval
+    heartbeat_idle_threshold = config.idle_threshold
     task = asyncio.create_task(_heartbeat_loop(chat_handler))
     log.info(
         f"Heartbeat enabled (interval={heartbeat_interval}s, idle_threshold={heartbeat_idle_threshold}s)"

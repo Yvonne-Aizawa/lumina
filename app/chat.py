@@ -1,14 +1,20 @@
 """Chat handler — manages conversation, LLM calls, and tool execution."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from openai import AsyncOpenAI
 
 from .mcp_manager import MCPManager
 from .tools import get_builtin_tools, handle_tool_call
+
+if TYPE_CHECKING:
+    from .config import LLMConfig
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +38,7 @@ def load_soul() -> str:
 class ChatHandler:
     def __init__(
         self,
-        llm_config: dict,
+        llm_config: LLMConfig,
         mcp_manager: MCPManager,
         animation_names: list[str],
         play_animation_fn,
@@ -41,10 +47,10 @@ class ChatHandler:
         bash_enabled: bool = False,
     ):
         self._client = AsyncOpenAI(
-            base_url=llm_config["base_url"],
-            api_key=llm_config.get("api_key", "unused"),
+            base_url=llm_config.base_url,
+            api_key=llm_config.api_key,
         )
-        self._model = llm_config["model"]
+        self._model = llm_config.model
         self._soul = load_soul()
         self._mcp = mcp_manager
         self._animation_names = animation_names

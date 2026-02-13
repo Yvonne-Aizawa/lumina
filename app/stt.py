@@ -1,8 +1,14 @@
 """STT (speech-to-text) model management, wake word config, and transcription."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import tempfile
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .config import STTConfig, WakeWordConfig
 
 log = logging.getLogger(__name__)
 
@@ -13,12 +19,11 @@ wakeword_enabled: bool = False
 wakeword_keyword: str = "hey_jarvis"
 
 
-async def init_stt(config: dict):
+async def init_stt(config: STTConfig):
     """Load the Whisper STT model if enabled in config. Call once at startup."""
     global stt_model, stt_enabled, stt_language
 
-    stt_cfg = config.get("stt", {})
-    if not stt_cfg.get("enabled"):
+    if not config.enabled:
         return
 
     try:
@@ -48,35 +53,31 @@ async def init_stt(config: dict):
 
         from faster_whisper import WhisperModel
 
-        stt_model_size = stt_cfg.get("model", "large-v3")
-        stt_device = stt_cfg.get("device", "auto")
-        stt_compute = stt_cfg.get("compute_type", "float16")
         log.info(
-            f"Loading STT model: {stt_model_size} (device={stt_device}, compute={stt_compute})"
+            f"Loading STT model: {config.model} (device={config.device}, compute={config.compute_type})"
         )
         stt_model = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: WhisperModel(
-                stt_model_size, device=stt_device, compute_type=stt_compute
+                config.model, device=config.device, compute_type=config.compute_type
             ),
         )
         stt_enabled = True
-        stt_language = stt_cfg.get("language")
+        stt_language = config.language
         log.info(f"STT model loaded (language={stt_language or 'auto'})")
     except Exception:
         log.exception("Failed to load STT model")
 
 
-def init_wakeword(config: dict):
+def init_wakeword(config: WakeWordConfig):
     """Load wake word settings from config. Call once at startup."""
     global wakeword_enabled, wakeword_keyword
 
-    ww_cfg = config.get("wakeword", {})
-    if ww_cfg.get("enabled"):
+    if config.enabled:
         wakeword_enabled = True
         log.info("Wake word enabled")
-    if ww_cfg.get("keyword"):
-        wakeword_keyword = ww_cfg["keyword"]
+    if config.keyword:
+        wakeword_keyword = config.keyword
 
 
 async def transcribe(audio_bytes: bytes) -> str:

@@ -18,7 +18,7 @@ from .broadcast import (
     play_animation,
 )
 from .chat import ChatHandler
-from .config import ANIMS_DIR, MODELS_DIR, PROJECT_DIR, load_config
+from .config import ANIMS_DIR, MODELS_DIR, PROJECT_DIR, Config, load_config
 from .heartbeat import record_user_interaction, start_heartbeat
 from .mcp_manager import MCPManager
 from .stt import (
@@ -53,35 +53,30 @@ async def lifespan(app: FastAPI):
 
     # Start MCP manager
     mcp_manager = MCPManager()
-    mcp_servers = config.get("mcp_servers") or config.get("mcpServers") or {}
-    await mcp_manager.start(mcp_servers)
+    await mcp_manager.start(config.mcp_servers)
 
     # Create chat handler
     chat_handler = ChatHandler(
-        llm_config=config.get("llm", {}),
+        llm_config=config.llm,
         mcp_manager=mcp_manager,
         animation_names=list_animations(),
         play_animation_fn=play_animation,
         notify_tool_call_fn=notify_tool_call,
-        brave_api_key=config.get("brave", {}).get("api_key")
-        if config.get("brave", {}).get("enabled")
-        else None,
-        bash_enabled=config.get("bash", {}).get("enabled", False),
+        brave_api_key=config.brave.api_key if config.brave.enabled else None,
+        bash_enabled=config.bash.enabled,
     )
 
     log.info(f"Available animations: {list_animations()}")
     log.info(
         f"MCP tools: {[t['function']['name'] for t in mcp_manager.get_openai_tools()]}"
     )
-    log.info(
-        f"Brave Search: {'enabled' if config.get('brave', {}).get('enabled') else 'disabled'}"
-    )
+    log.info(f"Brave Search: {'enabled' if config.brave.enabled else 'disabled'}")
 
     # Initialise subsystems
-    init_tts(config)
-    await init_stt(config)
-    init_wakeword(config)
-    heartbeat_task = start_heartbeat(config, chat_handler)
+    init_tts(config.tts)
+    await init_stt(config.stt)
+    init_wakeword(config.wakeword)
+    heartbeat_task = start_heartbeat(config.heartbeat, chat_handler)
 
     yield
 
