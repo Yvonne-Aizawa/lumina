@@ -148,58 +148,59 @@ function startRecording() {
   // Suppress wake word detection during recording
   if (engine) engine.setActiveKeywords([]);
 
-  navigator.mediaDevices
-    .getUserMedia({ audio: true })
-    .then((stream) => {
-      audioChunks = [];
-      mediaRecorder = new MediaRecorder(stream);
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunks.push(e.data);
-      };
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        recording = false;
+  // Reuse the engine's existing mic stream to avoid opening a second one,
+  // which can kill the engine's stream on some browsers when closed.
+  const stream = engine && engine._mediaStream;
+  if (!stream) {
+    console.warn("No engine media stream available for recording");
+    recording = false;
+    reactivate();
+    return;
+  }
 
-        if (audioChunks.length === 0) {
-          reactivate();
-          return;
-        }
+  audioChunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) audioChunks.push(e.data);
+  };
+  mediaRecorder.onstop = async () => {
+    // Do NOT stop stream tracks — the engine still needs them
+    recording = false;
 
-        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
-
-        try {
-          const form = new FormData();
-          form.append("file", blob, "recording.webm");
-          const res = await fetch("/api/transcribe", {
-            method: "POST",
-            body: form,
-          });
-          const data = await res.json();
-          if (data.text) {
-            await sendMessage(data.text);
-          } else if (data.error) {
-            addMessage("assistant", `STT error: ${data.error}`);
-          }
-        } catch {
-          addMessage("assistant", "STT request failed.");
-        }
-
-        // Re-enable wake word detection now that send is complete.
-        // If TTS audio is playing, the websocket handler will have
-        // called pauseWakeWord() and will resumeWakeWord() when done,
-        // so reactivate() will be a no-op in that case (paused=true).
-        reactivate();
-      };
-      mediaRecorder.start();
-
-      // Safety timeout — stop after silence
-      silenceTimer = setTimeout(stopRecording, SILENCE_TIMEOUT_MS);
-    })
-    .catch((err) => {
-      console.warn("Recording failed:", err);
-      recording = false;
+    if (audioChunks.length === 0) {
       reactivate();
-    });
+      return;
+    }
+
+    const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+
+    try {
+      const form = new FormData();
+      form.append("file", blob, "recording.webm");
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (data.text) {
+        await sendMessage(data.text);
+      } else if (data.error) {
+        addMessage("assistant", `STT error: ${data.error}`);
+      }
+    } catch {
+      addMessage("assistant", "STT request failed.");
+    }
+
+    // Re-enable wake word detection now that send is complete.
+    // If TTS audio is playing, the websocket handler will have
+    // called pauseWakeWord() and will resumeWakeWord() when done,
+    // so reactivate() will be a no-op in that case (paused=true).
+    reactivate();
+  };
+  mediaRecorder.start();
+
+  // Safety timeout — stop after silence
+  silenceTimer = setTimeout(stopRecording, SILENCE_TIMEOUT_MS);
 }
 
 function stopRecording() {
