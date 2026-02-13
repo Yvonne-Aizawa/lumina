@@ -8,7 +8,11 @@ let sending = false;
 function addMessage(role, text) {
   const el = document.createElement("div");
   el.className = `chat-msg ${role}`;
-  el.textContent = text;
+  if (role === "assistant" && typeof marked !== "undefined") {
+    el.innerHTML = marked.parse(text);
+  } else {
+    el.textContent = text;
+  }
   chatMessages.appendChild(el);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
