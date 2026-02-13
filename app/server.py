@@ -1,96 +1,58 @@
+"""FastAPI application — routes, lifespan, and static mounts."""
+
 import asyncio
-import base64
-import json
 import logging
-import tempfile
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-import httpx
 from fastapi import FastAPI, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .broadcast import (
+    broadcast,
+    connected_clients,
+    list_animations,
+    notify_tool_call,
+    play_animation,
+)
 from .chat import ChatHandler
+from .config import ANIMS_DIR, MODELS_DIR, PROJECT_DIR, load_config
+from .heartbeat import record_user_interaction, start_heartbeat
 from .mcp_manager import MCPManager
+from .stt import (
+    init_stt,
+    init_wakeword,
+    stt_enabled,
+    stt_model,
+    transcribe,
+    wakeword_enabled,
+    wakeword_keyword,
+)
+from .tts import init_tts, synthesize_and_broadcast
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-PROJECT_DIR = Path(__file__).parent.parent
-ASSETS_DIR = PROJECT_DIR / "assets"
-ANIMS_DIR = ASSETS_DIR / "anims"
-MODELS_DIR = ASSETS_DIR / "models"
-CONFIG_PATH = PROJECT_DIR / "config.json"
-HEARTBEAT_INTERVAL_DEFAULT = 600  # seconds (10 minutes)
-HEARTBEAT_IDLE_DEFAULT = 1200  # seconds (20 minutes)
-
 # --- Global state ---
 
-connected_clients: list[WebSocket] = []
 mcp_manager: MCPManager | None = None
 chat_handler: ChatHandler | None = None
 heartbeat_task: asyncio.Task | None = None
-heartbeat_interval: int = HEARTBEAT_INTERVAL_DEFAULT
-heartbeat_idle_threshold: int = HEARTBEAT_IDLE_DEFAULT
-last_user_interaction: float = 0.0
-heartbeat_waiting_for_user: bool = False
-tts_config: dict | None = None
-stt_model = None
-stt_enabled: bool = False
-stt_language: str | None = None
-wakeword_keyword: str = "hey_jarvis"
-
-
-def load_config() -> dict:
-    if CONFIG_PATH.exists():
-        return json.loads(CONFIG_PATH.read_text())
-    return {"llm": {}, "system_prompt": "", "mcp_servers": {}}
 
 
 # --- App lifecycle ---
 
 
-async def heartbeat_loop():
-    """Periodically prompt the LLM via heartbeat when the user has been idle."""
-    global heartbeat_waiting_for_user
-    while True:
-        await asyncio.sleep(heartbeat_interval)
-        if chat_handler is None:
-            continue
-        if heartbeat_waiting_for_user:
-            continue
-        idle_time = time.monotonic() - last_user_interaction
-        if idle_time < heartbeat_idle_threshold:
-            continue
-        try:
-            await broadcast({"action": "heartbeat", "status": "start"})
-            sent = await chat_handler.heartbeat()
-            await broadcast({"action": "heartbeat", "status": "end"})
-            if sent:
-                for text in sent:
-                    log.info(f"Heartbeat message: {text[:100]}")
-                    await broadcast({"action": "chat", "content": text})
-                    await synthesize_and_broadcast(text)
-                heartbeat_waiting_for_user = True
-        except Exception:
-            await broadcast({"action": "heartbeat", "status": "end"})
-            log.exception("Heartbeat loop error")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global mcp_manager, chat_handler, heartbeat_task
-    global heartbeat_interval, heartbeat_idle_threshold, tts_config
-    global stt_model, stt_enabled, stt_language, wakeword_keyword
 
     config = load_config()
 
     # Start MCP manager
     mcp_manager = MCPManager()
-    # Support both "mcp_servers" and "mcpServers" (LM Studio format)
     mcp_servers = config.get("mcp_servers") or config.get("mcpServers") or {}
     await mcp_manager.start(mcp_servers)
 
@@ -108,76 +70,11 @@ async def lifespan(app: FastAPI):
         f"MCP tools: {[t['function']['name'] for t in mcp_manager.get_openai_tools()]}"
     )
 
-    # Load TTS config
-    tts_cfg = config.get("tts", {})
-    if tts_cfg.get("enabled"):
-        tts_config = tts_cfg
-        log.info(f"TTS enabled (server: {tts_cfg['base_url']})")
-
-    # Load STT model if enabled
-    stt_cfg = config.get("stt", {})
-    if stt_cfg.get("enabled"):
-        try:
-            # Ensure pip-installed NVIDIA libs are discoverable
-            try:
-                import os
-
-                import nvidia.cublas
-                import nvidia.cudnn
-
-                for pkg in (nvidia.cublas, nvidia.cudnn):
-                    lib_dir = os.path.join(pkg.__path__[0], "lib")
-                    if lib_dir not in os.environ.get("LD_LIBRARY_PATH", ""):
-                        os.environ["LD_LIBRARY_PATH"] = (
-                            lib_dir + ":" + os.environ.get("LD_LIBRARY_PATH", "")
-                        )
-                        import ctypes
-
-                        for lib in os.listdir(lib_dir):
-                            if lib.endswith(".so") or ".so." in lib:
-                                try:
-                                    ctypes.cdll.LoadLibrary(os.path.join(lib_dir, lib))
-                                except OSError:
-                                    pass
-            except ImportError:
-                pass
-
-            from faster_whisper import WhisperModel
-
-            stt_model_size = stt_cfg.get("model", "large-v3")
-            stt_device = stt_cfg.get("device", "auto")
-            stt_compute = stt_cfg.get("compute_type", "float16")
-            log.info(
-                f"Loading STT model: {stt_model_size} (device={stt_device}, compute={stt_compute})"
-            )
-            stt_model = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: WhisperModel(
-                    stt_model_size, device=stt_device, compute_type=stt_compute
-                ),
-            )
-            stt_enabled = True
-            stt_language = stt_cfg.get("language")
-            log.info(f"STT model loaded (language={stt_language or 'auto'})")
-        except Exception:
-            log.exception("Failed to load STT model")
-
-    # Load wake word config
-    ww_cfg = config.get("wakeword", {})
-    if ww_cfg.get("keyword"):
-        wakeword_keyword = ww_cfg["keyword"]
-
-    # Start background heartbeat if enabled
-    hb_config = config.get("heartbeat", {})
-    if hb_config.get("enabled", False):
-        heartbeat_interval = hb_config.get("interval", HEARTBEAT_INTERVAL_DEFAULT)
-        heartbeat_idle_threshold = hb_config.get(
-            "idle_threshold", HEARTBEAT_IDLE_DEFAULT
-        )
-        heartbeat_task = asyncio.create_task(heartbeat_loop())
-        log.info(
-            f"Heartbeat enabled (interval={heartbeat_interval}s, idle_threshold={heartbeat_idle_threshold}s)"
-        )
+    # Initialise subsystems
+    init_tts(config)
+    await init_stt(config)
+    init_wakeword(config)
+    heartbeat_task = start_heartbeat(config, chat_handler)
 
     yield
 
@@ -192,64 +89,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-
-
-# --- WebSocket ---
-
-
-async def broadcast(message: dict):
-    """Send a JSON message to all connected browser clients."""
-    data = json.dumps(message)
-    for ws in list(connected_clients):
-        try:
-            await ws.send_text(data)
-        except Exception:
-            connected_clients.remove(ws)
-
-
-# --- Animation helpers ---
-
-
-def list_animations() -> list[str]:
-    """Return names of available animations (FBX files in anims/)."""
-    if not ANIMS_DIR.exists():
-        return []
-    return sorted(p.stem for p in ANIMS_DIR.glob("*.fbx"))
-
-
-async def play_animation(name: str):
-    """Send a play command to all connected browsers."""
-    await broadcast({"action": "play", "animation": name})
-
-
-async def notify_tool_call(name: str, arguments: dict):
-    """Broadcast a tool call notification to all connected browsers."""
-    await broadcast({"action": "tool_call", "name": name, "arguments": arguments})
-
-
-async def synthesize_and_broadcast(text: str):
-    """Call GPT-SoVITS to synthesize speech and broadcast audio to all clients."""
-    if not tts_config or not tts_config.get("enabled"):
-        return
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                f"{tts_config['base_url']}/tts",
-                json={
-                    "text": text,
-                    "text_lang": tts_config.get("text_lang", "en"),
-                    "ref_audio_path": tts_config.get("ref_audio_path", ""),
-                    "prompt_text": tts_config.get("prompt_text", ""),
-                    "prompt_lang": tts_config.get("prompt_lang", "en"),
-                },
-            )
-            if resp.status_code == 200:
-                audio_b64 = base64.b64encode(resp.content).decode("ascii")
-                await broadcast({"action": "audio", "data": audio_b64})
-            else:
-                log.warning(f"TTS failed: {resp.status_code} {resp.text[:200]}")
-    except Exception:
-        log.exception("TTS synthesis error")
 
 
 # --- Routes ---
@@ -280,9 +119,7 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat")
 async def api_chat(req: ChatRequest):
-    global last_user_interaction, heartbeat_waiting_for_user
-    last_user_interaction = time.monotonic()
-    heartbeat_waiting_for_user = False
+    record_user_interaction()
     if chat_handler is None:
         return {"error": "Chat not initialized"}
     try:
@@ -304,24 +141,24 @@ async def api_chat_clear():
 
 @app.get("/api/stt/status")
 async def api_stt_status():
-    return {"enabled": stt_enabled, "wakeword": wakeword_keyword}
+    from .stt import stt_enabled, wakeword_enabled, wakeword_keyword
+
+    return {
+        "enabled": stt_enabled,
+        "wakeword": wakeword_keyword,
+        "wakeword_enabled": wakeword_enabled,
+    }
 
 
 @app.post("/api/transcribe")
 async def api_transcribe(file: UploadFile):
+    from .stt import stt_enabled, stt_model
+
     if not stt_enabled or stt_model is None:
         return {"error": "STT not enabled"}
     try:
         audio_bytes = await file.read()
-
-        def _transcribe():
-            with tempfile.NamedTemporaryFile(suffix=".webm", delete=True) as tmp:
-                tmp.write(audio_bytes)
-                tmp.flush()
-                segments, _ = stt_model.transcribe(tmp.name, language=stt_language)
-                return "".join(s.text for s in segments).strip()
-
-        text = await asyncio.get_event_loop().run_in_executor(None, _transcribe)
+        text = await transcribe(audio_bytes)
         return {"text": text}
     except Exception as e:
         log.exception("STT transcription error")
