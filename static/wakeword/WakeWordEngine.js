@@ -69,7 +69,7 @@ const createEmitter = () => {
 
 export class WakeWordEngine {
   constructor({
-    keywords = ["hey_sofie"],
+    keywords = ["lumina"],
     modelFiles = MODEL_FILE_MAP,
     baseAssetUrl = "/models",
     ortWasmPath,
@@ -455,6 +455,15 @@ export class WakeWordEngine {
         });
 
         const keywordActive = this._activeKeywords.has(name);
+        if (score > this.config.detectionThreshold) {
+          this._debug("Detection check", {
+            keyword: name,
+            score: Number(score.toFixed(3)),
+            keywordActive,
+            isSpeechActive,
+            coolingDown: this._isDetectionCoolingDown,
+          });
+        }
         if (
           emitEvents &&
           keywordActive &&

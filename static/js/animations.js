@@ -198,7 +198,6 @@ function playAnimationByName(name) {
       const idleAction = mixer.clipAction(idleClip);
       idleAction.reset().play();
       currentAnimName = "Idle";
-      document.getElementById("info").textContent = "Animation: Idle";
     };
     mixer._onFinished = onFinished;
     mixer.addEventListener("finished", onFinished);
@@ -208,7 +207,6 @@ function playAnimationByName(name) {
   }
 
   currentAnimName = name;
-  document.getElementById("info").textContent = `Animation: ${name}`;
 }
 
 export {
