@@ -72,6 +72,8 @@ function loadMessages(messages) {
   for (const msg of messages) {
     if (msg.role === "user" || msg.role === "assistant") {
       addMessage(msg.role, msg.content);
+    } else if (msg.role === "tool_call") {
+      addToolCall(msg.name, msg.arguments);
     }
   }
 }

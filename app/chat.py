@@ -165,9 +165,10 @@ class ChatHandler:
             self._save()
 
             tools = self._get_all_tools()
+            llm_messages = [m for m in self._messages if m["role"] != "tool_call"]
             messages = [
                 {"role": "system", "content": self._soul},
-                *self._messages,
+                *llm_messages,
             ]
 
         for _ in range(MAX_TOOL_ROUNDS):
@@ -190,6 +191,11 @@ class ChatHandler:
                         fn_args = {}
 
                     log.info(f"Tool call: {fn_name}({fn_args})")
+                    async with self._lock:
+                        self._messages.append(
+                            {"role": "tool_call", "name": fn_name, "arguments": fn_args}
+                        )
+                        self._save()
                     if self._notify_tool_call:
                         await self._notify_tool_call(fn_name, fn_args)
                     result = await self._dispatch_tool(fn_name, fn_args)
