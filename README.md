@@ -62,7 +62,8 @@ Copy the example below to `config.json` in the project root and adjust to your s
   },
   "wakeword": {                     // Optional: browser-side wake word
     "enabled": false,
-    "keyword": "hey_jarvis"         // Must match a model in static/wakeword/models/
+    "keyword": "hey_jarvis",        // Wake word name
+    "model_file": "hey_jarvis.onnx" // ONNX model filename (defaults to {keyword}.onnx)
   },
   "tts": {                          // Optional: GPT-SoVITS text-to-speech
     "enabled": false,
@@ -128,8 +129,9 @@ GPT-SoVITS must be running separately and accessible at the URL configured in `t
 ## Adding Wake Word Models
 
 1. Drop `.onnx` keyword model files into `static/wakeword/models/`
-2. Add the keyword-to-filename mapping in `static/wakeword/WakeWordEngine.js` (`MODEL_FILE_MAP`)
-3. Set `wakeword.keyword` in `config.json` to match
+2. Set `wakeword.keyword` and optionally `wakeword.model_file` in `config.json`
+
+If `model_file` is omitted, it defaults to `{keyword}.onnx`.
 
 ## License
 

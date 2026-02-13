@@ -10,6 +10,7 @@ let audioChunks = [];
 let silenceTimer = null;
 let loaded = false;
 let keyword = "hey_jarvis";
+let modelFile = null;
 
 const SILENCE_TIMEOUT_MS = 1500;
 
@@ -30,6 +31,7 @@ async function initWakeWord() {
       return;
     }
     if (data.wakeword) keyword = data.wakeword;
+    if (data.wakeword_model_file) modelFile = data.wakeword_model_file;
   } catch {
     return;
   }
@@ -50,12 +52,16 @@ async function loadEngine() {
       "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/";
   }
 
-  engine = new WakeWordEngine({
+  const engineOpts = {
     keywords: [keyword],
     baseAssetUrl: "/static/wakeword/models",
     detectionThreshold: 0.5,
     cooldownMs: 3000,
-  });
+  };
+  if (modelFile) {
+    engineOpts.modelFiles = { [keyword]: modelFile };
+  }
+  engine = new WakeWordEngine(engineOpts);
 
   await engine.load();
   loaded = true;

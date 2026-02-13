@@ -29,6 +29,7 @@ from .stt import (
     transcribe,
     wakeword_enabled,
     wakeword_keyword,
+    wakeword_model_file,
 )
 from .tts import init_tts, synthesize_and_broadcast
 
@@ -143,12 +144,18 @@ async def api_chat_clear():
 
 @app.get("/api/stt/status")
 async def api_stt_status():
-    from .stt import stt_enabled, wakeword_enabled, wakeword_keyword
+    from .stt import (
+        stt_enabled,
+        wakeword_enabled,
+        wakeword_keyword,
+        wakeword_model_file,
+    )
 
     return {
         "enabled": stt_enabled,
         "wakeword": wakeword_keyword,
         "wakeword_enabled": wakeword_enabled,
+        "wakeword_model_file": wakeword_model_file,
     }
 
 

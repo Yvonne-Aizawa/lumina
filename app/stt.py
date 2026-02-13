@@ -17,6 +17,7 @@ stt_enabled: bool = False
 stt_language: str | None = None
 wakeword_enabled: bool = False
 wakeword_keyword: str = "hey_jarvis"
+wakeword_model_file: str | None = None
 
 
 async def init_stt(config: STTConfig):
@@ -71,13 +72,14 @@ async def init_stt(config: STTConfig):
 
 def init_wakeword(config: WakeWordConfig):
     """Load wake word settings from config. Call once at startup."""
-    global wakeword_enabled, wakeword_keyword
+    global wakeword_enabled, wakeword_keyword, wakeword_model_file
 
     if config.enabled:
         wakeword_enabled = True
         log.info("Wake word enabled")
     if config.keyword:
         wakeword_keyword = config.keyword
+    wakeword_model_file = config.model_file
 
 
 async def transcribe(audio_bytes: bytes) -> str:

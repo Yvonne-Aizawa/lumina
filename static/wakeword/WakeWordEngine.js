@@ -145,10 +145,7 @@ export class WakeWordEngine {
     this._keywordModels = {};
     let maxWindowSize = this.config.embeddingWindowSize;
     for (const keyword of this.config.keywords) {
-      const file = this.config.modelFiles[keyword];
-      if (!file) {
-        throw new Error(`No model file configured for keyword "${keyword}"`);
-      }
+      const file = this.config.modelFiles[keyword] || `${keyword}.onnx`;
       const session = await ort.InferenceSession.create(
         resolver(file),
         sessionOptions,
