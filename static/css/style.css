@@ -12,18 +12,7 @@ body {
 canvas {
     display: block;
 }
-#info {
-    position: absolute;
-    top: 16px;
-    left: 16px;
-    background: rgba(0, 0, 0, 0.6);
-    color: #fff;
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-family: sans-serif;
-    font-size: 14px;
-    pointer-events: none;
-}
+
 #heartbeat-indicator {
     position: absolute;
     top: 16px;

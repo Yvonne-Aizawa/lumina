@@ -179,9 +179,9 @@ async def websocket_endpoint(ws: WebSocket):
 
 
 # Serve VRM model file
-@app.get("/testavi.vrm")
+@app.get("/avatar.vrm")
 async def serve_vrm():
-    return FileResponse(MODELS_DIR / "testavi.vrm")
+    return FileResponse(MODELS_DIR / "avatar.vrm")
 
 
 # Serve animation files and static assets

@@ -37,7 +37,7 @@ pip install -r requirements.txt
 
 Place your files in the `assets/` directory:
 
-- `assets/models/testavi.vrm` — VRM avatar model
+- `assets/models/avatar.vrm` — VRM avatar model
 - `assets/anims/` — Mixamo FBX animations (exported as **FBX Binary**, **Without Skin**)
 
 The filename stem becomes the animation name (e.g. `Waving.fbx` becomes `Waving`).

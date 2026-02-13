@@ -13,7 +13,6 @@ import { connectWebSocket } from "./websocket.js";
 import { initChat } from "./chat.js";
 import { initWakeWord } from "./wakeword.js";
 
-const info = document.getElementById("info");
 let mixer = null;
 let currentVRM = null;
 
@@ -21,10 +20,8 @@ let currentVRM = null;
 const loader = new GLTFLoader();
 loader.register((parser) => new VRMLoaderPlugin(parser));
 
-info.textContent = "Loading VRM model...";
-
 loader.load(
-  "./testavi.vrm",
+  "./avatar.vrm",
   async (gltf) => {
     const vrm = gltf.userData.vrm;
     currentVRM = vrm;
@@ -34,7 +31,6 @@ loader.load(
     setMixer(mixer);
 
     // Fetch animation list from server and preload all
-    info.textContent = "Loading animations...";
     try {
       const res = await fetch("/api/animations");
       const data = await res.json();
@@ -58,26 +54,17 @@ loader.load(
       if (defaultAnim) {
         playAnimationByName(defaultAnim);
       }
-      info.textContent = `Ready — ${loadedNames.length} animation(s) loaded`;
+      console.log(`Ready — ${loadedNames.length} animation(s) loaded`);
     } catch (e) {
       console.error("Failed to fetch animation list:", e);
-      info.textContent = "Failed to load animations";
     }
 
     // Connect WebSocket after animations are loaded
     connectWebSocket();
   },
-  (progress) => {
-    if (progress.total) {
-      info.textContent =
-        "Loading VRM: " +
-        ((progress.loaded / progress.total) * 100).toFixed(0) +
-        "%";
-    }
-  },
+  undefined,
   (error) => {
     console.error("Error loading VRM:", error);
-    info.textContent = "Error loading VRM model";
   },
 );
 
