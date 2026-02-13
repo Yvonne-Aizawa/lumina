@@ -52,8 +52,11 @@ loader.load(
       }
 
       const loadedNames = Object.keys(animationClips);
-      if (loadedNames.length > 0) {
-        playAnimationByName(loadedNames[0]);
+      const defaultAnim = loadedNames.includes("Idle")
+        ? "Idle"
+        : loadedNames[0];
+      if (defaultAnim) {
+        playAnimationByName(defaultAnim);
       }
       info.textContent = `Ready — ${loadedNames.length} animation(s) loaded`;
     } catch (e) {

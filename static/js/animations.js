@@ -173,28 +173,37 @@ function playAnimationByName(name) {
     return;
   }
 
-  const idleClip = animationClips["Default Idle"];
-  const isIdle = name === "Default Idle";
+  const idleClip = animationClips["Idle"];
+  const isIdle = name === "Idle";
+
+  // Remove any previous finished listener to avoid stacking
+  if (mixer._onFinished) {
+    mixer.removeEventListener("finished", mixer._onFinished);
+    mixer._onFinished = null;
+  }
 
   mixer.stopAllAction();
   const action = mixer.clipAction(clip);
+  action.reset();
 
   if (!isIdle && idleClip) {
-    // Play once, then crossfade back to idle
-    action.setLoop(THREE.LoopOnce);
+    action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = true;
     action.play();
 
     const onFinished = () => {
       mixer.removeEventListener("finished", onFinished);
+      mixer._onFinished = null;
+      mixer.stopAllAction();
       const idleAction = mixer.clipAction(idleClip);
-      action.crossFadeTo(idleAction, 0.5, false);
       idleAction.reset().play();
-      currentAnimName = "Default Idle";
-      document.getElementById("info").textContent = "Animation: Default Idle";
+      currentAnimName = "Idle";
+      document.getElementById("info").textContent = "Animation: Idle";
     };
+    mixer._onFinished = onFinished;
     mixer.addEventListener("finished", onFinished);
   } else {
+    action.setLoop(THREE.LoopRepeat);
     action.play();
   }
 
