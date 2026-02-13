@@ -161,6 +161,31 @@ class ChatHandler:
             {
                 "type": "function",
                 "function": {
+                    "name": "memory_patch",
+                    "description": "Patch a memory file by replacing a specific substring with new text. Use this for small edits instead of rewriting the whole file.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "filename": {
+                                "type": "string",
+                                "description": "Name of the memory file to patch (without .md extension).",
+                            },
+                            "old_string": {
+                                "type": "string",
+                                "description": "The exact text to find and replace.",
+                            },
+                            "new_string": {
+                                "type": "string",
+                                "description": "The text to replace it with.",
+                            },
+                        },
+                        "required": ["filename", "old_string", "new_string"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "memory_list",
                     "description": "List all saved memory files by name.",
                     "parameters": {
@@ -320,6 +345,27 @@ class ChatHandler:
         path.unlink()
         return f"Memory '{filename}' deleted."
 
+    def _handle_memory_patch(self, arguments: dict) -> str:
+        filename = arguments.get("filename", "")
+        old_string = arguments.get("old_string", "")
+        new_string = arguments.get("new_string", "")
+        if not filename:
+            return "Error: filename is required."
+        if not old_string:
+            return "Error: old_string is required."
+        path = self._safe_filename(filename)
+        if not path.exists():
+            return f"Memory '{filename}' not found."
+        content = path.read_text(encoding="utf-8")
+        count = content.count(old_string)
+        if count == 0:
+            return f"Error: old_string not found in memory '{filename}'."
+        if count > 1:
+            return f"Error: old_string matches {count} times in memory '{filename}'. Provide a more specific string."
+        content = content.replace(old_string, new_string, 1)
+        path.write_text(content, encoding="utf-8")
+        return f"Memory '{filename}' patched."
+
     def _load_state(self) -> dict:
         if STATE_PATH.exists():
             try:
@@ -434,6 +480,8 @@ class ChatHandler:
             return self._handle_memory_edit(arguments)
         if name == "memory_delete":
             return self._handle_memory_delete(arguments)
+        if name == "memory_patch":
+            return self._handle_memory_patch(arguments)
 
         if name == "state_set":
             return self._handle_state_set(arguments)
