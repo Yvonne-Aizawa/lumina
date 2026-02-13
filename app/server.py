@@ -66,6 +66,7 @@ async def lifespan(app: FastAPI):
         brave_api_key=config.get("brave", {}).get("api_key")
         if config.get("brave", {}).get("enabled")
         else None,
+        bash_enabled=config.get("bash", {}).get("enabled", False),
     )
 
     log.info(f"Available animations: {list_animations()}")

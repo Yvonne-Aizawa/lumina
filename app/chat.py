@@ -42,6 +42,7 @@ class ChatHandler:
         play_animation_fn,
         notify_tool_call_fn=None,
         brave_api_key: str | None = None,
+        bash_enabled: bool = False,
     ):
         self._client = AsyncOpenAI(
             base_url=llm_config["base_url"],
@@ -54,6 +55,7 @@ class ChatHandler:
         self._play_animation = play_animation_fn
         self._notify_tool_call = notify_tool_call_fn
         self._brave_api_key = brave_api_key
+        self._bash_enabled = bash_enabled
 
         # Conversation history (in-memory, single session)
         self._messages: list[dict] = []
@@ -284,6 +286,26 @@ class ChatHandler:
                     },
                 }
             )
+        if self._bash_enabled:
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "run_command",
+                        "description": "Execute a bash command on the server and return its output.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string",
+                                    "description": "The bash command to execute.",
+                                },
+                            },
+                            "required": ["command"],
+                        },
+                    },
+                }
+            )
         return tools
 
     def _get_all_tools(self) -> list[dict]:
@@ -460,6 +482,31 @@ class ChatHandler:
             log.exception("Web search error")
             return f"Search error: {e}"
 
+    async def _handle_run_command(self, arguments: dict) -> str:
+        command = arguments.get("command", "").strip()
+        if not command:
+            return "Error: command is required."
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+            output = stdout.decode(errors="replace").strip()
+            if len(output) > 4000:
+                output = output[:4000] + "\n... (truncated)"
+            return (
+                output
+                if output
+                else f"Command exited with code {proc.returncode} (no output)."
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            return "Error: command timed out after 30 seconds."
+        except Exception as e:
+            return f"Error running command: {e}"
+
     async def _handle_tool_call(self, name: str, arguments: dict) -> str:
         """Execute a tool call and return the result as a string."""
         if name == "play_animation":
@@ -494,6 +541,8 @@ class ChatHandler:
 
         if name == "web_search":
             return await self._handle_web_search(arguments)
+        if name == "run_command":
+            return await self._handle_run_command(arguments)
 
         if self._mcp.has_tool(name):
             return await self._mcp.call_tool(name, arguments)

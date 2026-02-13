@@ -37,7 +37,7 @@ No tests or linting are configured.
 
 **`app/heartbeat.py`** — Background heartbeat system. `start_heartbeat(config, chat_handler)` spawns the async loop. Tracks user idle time via `record_user_interaction()`. Pauses until user responds before sending another heartbeat.
 
-**`app/chat.py`** — Chat handler. Manages conversation history, LLM calls via OpenAI SDK, and tool execution loop (up to `MAX_TOOL_ROUNDS=10` iterations). Built-in tools: `play_animation`, `memory_create/read/edit/delete/list`, `state_set/get/list/check_time`. Also routes to MCP tools. The system prompt is built from `state/soul/` markdown files (excluding `heartbeat.md`), loaded once at init. Has a separate `heartbeat()` method for background prompts. An `asyncio.Lock` protects `_messages` for concurrency safety.
+**`app/chat.py`** — Chat handler. Manages conversation history, LLM calls via OpenAI SDK, and tool execution loop (up to `MAX_TOOL_ROUNDS=10` iterations). Built-in tools: `play_animation`, `memory_create/read/edit/patch/delete/list`, `state_set/get/list/check_time`, `web_search` (Brave Search, when enabled). Also routes to MCP tools. The system prompt is built from `state/soul/` markdown files (excluding `heartbeat.md`), loaded once at init. Has a separate `heartbeat()` method for background prompts. An `asyncio.Lock` protects `_messages` for concurrency safety. `memory_patch` does string replacement (rejects if old_string matches 0 or >1 times).
 
 **`app/mcp_manager.py`** — MCP client manager. Connects to configured MCP servers via stdio on startup, discovers their tools, converts tool schemas to OpenAI function-calling format, and routes tool calls to the correct server session.
 
@@ -45,7 +45,7 @@ No tests or linting are configured.
 - `app.js` — Entry point. Loads VRM, preloads animations, starts render loop, initializes chat and wake word.
 - `animations.js` — Mixamo FBX-to-VRM retargeting.
 - `websocket.js` — Auto-reconnecting WebSocket for animation playback, heartbeat, TTS audio playback. Pauses/resumes wake word during audio. Background tabs skip audio playback (`document.hidden`).
-- `chat.js` — Chat UI, push-to-talk mic recording, sends audio to `/api/transcribe`. `sendMessage()` is exported for use by other modules (wake word).
+- `chat.js` — Chat UI, push-to-talk mic recording, sends audio to `/api/transcribe`. `sendMessage()` is exported for use by other modules (wake word). Assistant messages are rendered as markdown via `marked.js` (CDN).
 - `wakeword.js` — Browser-side wake word detection using `WakeWordEngine` (ONNX/WASM). On detection: records speech via MediaRecorder, auto-stops on silence (VAD speech-end), transcribes via `/api/transcribe`, sends through chat. Pauses during TTS playback to avoid self-triggering. Keyword is configurable from server config.
 
 **`static/wakeword/`** — Vendored openWakeWord assets:
@@ -122,6 +122,10 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
     "interval": 600,                 // seconds between heartbeat checks
     "idle_threshold": 1200           // seconds of user inactivity before triggering
   },
+  "brave": {                         // Optional: Brave Search web tool
+    "enabled": false,
+    "api_key": "BSA..."
+  },
   "mcpServers": {                    // Optional: MCP tool servers
     "server-name": {
       "command": "...",
@@ -137,6 +141,19 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
 **`state/memories/*.md`** — Persistent memory files created/managed by the LLM via tool calls. Filenames are sanitized to prevent path traversal.
 
 **`state/state.json`** — Persistent key-value state store managed by the LLM via `state_*` tools.
+
+## Docker
+
+```bash
+# Build and run with docker-compose (GPU)
+docker compose up --build
+
+# Run CPU-only (no STT)
+docker compose up --build
+# (remove the deploy.resources section from docker-compose.yml)
+```
+
+`Dockerfile` uses `nvidia/cuda:12.4.1-runtime-ubuntu22.04` with Python 3.12 and Node.js 22. Runtime data (`config.json`, `assets/`, `state/`) is bind-mounted, not baked into the image.
 
 ## Adding Animations
 
@@ -156,5 +173,5 @@ Mixamo FBX animations are retargeted to VRM in the browser. `loadMixamoAnimation
 
 ## Dependencies
 
-- **Python:** fastapi, uvicorn[standard], openai, mcp, httpx, faster-whisper, nvidia-cublas-cu12
-- **Browser (CDN):** three.js 0.162.0, @pixiv/three-vrm 3.3.2, onnxruntime-web 1.21.0
+- **Python:** fastapi, uvicorn[standard], openai, mcp, httpx, faster-whisper, nvidia-cublas-cu12, brave-search-python-client, psutil
+- **Browser (CDN):** three.js 0.162.0, @pixiv/three-vrm 3.3.2, onnxruntime-web 1.21.0, marked.js
