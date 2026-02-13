@@ -79,11 +79,10 @@ class ChatHandler:
         self._chat_id = now.strftime("%Y-%m-%dT%H-%M-%S")
         self._chat_path = CHATS_DIR / f"{self._chat_id}.json"
         self._messages = []
-        self._save()
 
     def _save(self):
-        """Persist current session to disk."""
-        if not self._chat_path:
+        """Persist current session to disk. Skips if no messages yet."""
+        if not self._chat_path or not self._messages:
             return
         data = {
             "id": self._chat_id,
