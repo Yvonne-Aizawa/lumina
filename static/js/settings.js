@@ -58,7 +58,7 @@ async function loadChatList() {
 
       const dateSpan = document.createElement("span");
       dateSpan.className = "chat-date";
-      dateSpan.textContent = formatDate(session.started_at);
+      dateSpan.textContent = session.title || formatDate(session.started_at);
 
       const countSpan = document.createElement("span");
       countSpan.className = "chat-count";

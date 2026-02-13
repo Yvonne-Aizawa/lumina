@@ -67,6 +67,7 @@ class ChatHandler:
         self._lock = asyncio.Lock()
         self._chat_id: str | None = None
         self._chat_path: Path | None = None
+        self._title: str = ""
 
         self._new_session()
 
@@ -78,25 +79,27 @@ class ChatHandler:
         now = datetime.now(timezone.utc)
         self._chat_id = now.strftime("%Y-%m-%dT%H-%M-%S")
         self._chat_path = CHATS_DIR / f"{self._chat_id}.json"
+        self._title = now.strftime("%b %d, %Y %H:%M")
         self._messages = []
 
     def _save(self):
         """Persist current session to disk. Skips if no messages yet."""
         if not self._chat_path or not self._messages:
             return
-        data = {
-            "id": self._chat_id,
-            "started_at": self._chat_id.replace("T", "T").replace("-", "-"),
-            "messages": self._messages,
-        }
-        # Reconstruct proper ISO timestamp from id
+        started_at = self._chat_id
         try:
             parts = self._chat_id.split("T")
             date_part = parts[0]
             time_part = parts[1].replace("-", ":")
-            data["started_at"] = f"{date_part}T{time_part}+00:00"
+            started_at = f"{date_part}T{time_part}+00:00"
         except (IndexError, ValueError):
-            data["started_at"] = self._chat_id
+            pass
+        data = {
+            "id": self._chat_id,
+            "title": self._title,
+            "started_at": started_at,
+            "messages": self._messages,
+        }
         self._chat_path.write_text(
             json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
         )
@@ -111,6 +114,7 @@ class ChatHandler:
                 sessions.append(
                     {
                         "id": data.get("id", path.stem),
+                        "title": data.get("title", ""),
                         "started_at": data.get("started_at", ""),
                         "message_count": len(data.get("messages", [])),
                     }
@@ -128,6 +132,7 @@ class ChatHandler:
         data = json.loads(path.read_text(encoding="utf-8"))
         self._chat_id = safe_id
         self._chat_path = path
+        self._title = data.get("title", "")
         self._messages = data.get("messages", [])
         return self._messages
 
