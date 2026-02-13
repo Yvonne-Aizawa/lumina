@@ -25,7 +25,17 @@ No tests or linting are configured.
 
 **`server.py`** — Thin launcher. Imports the FastAPI app from `app/server.py` and runs uvicorn.
 
-**`app/server.py`** — FastAPI server. Manages app lifecycle (MCP startup/shutdown, STT model loading, heartbeat task), WebSocket connections to browsers, REST API endpoints. Routes: `/` (frontend), `/api/chat` (POST), `/api/animations` (GET), `/api/play/{name}` (POST), `/api/chat/clear` (POST), `/api/stt/status` (GET), `/api/transcribe` (POST), `/ws` (WebSocket). Blocking operations (STT model load, transcription) run in thread executors to avoid blocking the async event loop. NVIDIA CUDA libraries from pip packages are pre-loaded via `ctypes` at startup.
+**`app/server.py`** — FastAPI app, lifespan orchestrator, and route handlers. The lifespan function calls init functions from the subsystem modules below. Routes: `/` (frontend), `/api/chat` (POST), `/api/animations` (GET), `/api/play/{name}` (POST), `/api/chat/clear` (POST), `/api/stt/status` (GET), `/api/transcribe` (POST), `/ws` (WebSocket).
+
+**`app/config.py`** — Path constants (`PROJECT_DIR`, `ASSETS_DIR`, `ANIMS_DIR`, `MODELS_DIR`, `CONFIG_PATH`) and `load_config()`.
+
+**`app/broadcast.py`** — WebSocket client list and `broadcast()` for sending JSON to all connected browsers. Also contains animation helpers: `list_animations()`, `play_animation()`, `notify_tool_call()`.
+
+**`app/tts.py`** — TTS client. `init_tts(config)` loads settings, `synthesize_and_broadcast(text)` calls GPT-SoVITS and broadcasts base64 audio via WebSocket.
+
+**`app/stt.py`** — STT model and wake word config. `init_stt(config)` loads faster-whisper in a thread executor (with NVIDIA CUDA libraries pre-loaded via `ctypes`). `init_wakeword(config)` loads wake word settings. `transcribe(audio_bytes)` runs transcription in a thread executor.
+
+**`app/heartbeat.py`** — Background heartbeat system. `start_heartbeat(config, chat_handler)` spawns the async loop. Tracks user idle time via `record_user_interaction()`. Pauses until user responds before sending another heartbeat.
 
 **`app/chat.py`** — Chat handler. Manages conversation history, LLM calls via OpenAI SDK, and tool execution loop (up to `MAX_TOOL_ROUNDS=10` iterations). Built-in tools: `play_animation`, `memory_create/read/edit/delete/list`, `state_set/get/list/check_time`. Also routes to MCP tools. The system prompt is built from `state/soul/` markdown files (excluding `heartbeat.md`), loaded once at init. Has a separate `heartbeat()` method for background prompts. An `asyncio.Lock` protects `_messages` for concurrency safety.
 
@@ -96,6 +106,7 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
     "language": "en"                // Force language (omit for auto-detect)
   },
   "wakeword": {                     // Optional: browser-side wake word
+    "enabled": false,
     "keyword": "hey_jarvis"         // Must match a model in static/wakeword/models/
   },
   "tts": {                          // Optional: GPT-SoVITS text-to-speech

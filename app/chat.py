@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -40,6 +41,7 @@ class ChatHandler:
         animation_names: list[str],
         play_animation_fn,
         notify_tool_call_fn=None,
+        brave_api_key: str | None = None,
     ):
         self._client = AsyncOpenAI(
             base_url=llm_config["base_url"],
@@ -51,13 +53,14 @@ class ChatHandler:
         self._animation_names = animation_names
         self._play_animation = play_animation_fn
         self._notify_tool_call = notify_tool_call_fn
+        self._brave_api_key = brave_api_key
 
         # Conversation history (in-memory, single session)
         self._messages: list[dict] = []
         self._lock = asyncio.Lock()
 
     def _get_builtin_tools(self) -> list[dict]:
-        return [
+        tools = [
             {
                 "type": "function",
                 "function": {
@@ -232,6 +235,31 @@ class ChatHandler:
                 },
             },
         ]
+        if self._brave_api_key is not None:
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "web_search",
+                        "description": "Search the web using Brave Search. Use this to find current information, answer questions about recent events, or look up facts.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {
+                                    "type": "string",
+                                    "description": "The search query.",
+                                },
+                                "count": {
+                                    "type": "integer",
+                                    "description": "Number of results to return (default 5, max 20).",
+                                },
+                            },
+                            "required": ["query"],
+                        },
+                    },
+                }
+            )
+        return tools
 
     def _get_all_tools(self) -> list[dict]:
         return self._get_builtin_tools() + self._mcp.get_openai_tools()
@@ -363,6 +391,29 @@ class ChatHandler:
         except (ValueError, TypeError):
             return f"Error: '{key}' value '{value}' is not a valid timestamp."
 
+    async def _handle_web_search(self, arguments: dict) -> str:
+        query = arguments.get("query", "").strip()
+        if not query:
+            return "Error: query is required."
+        count = min(int(arguments.get("count", 5)), 20)
+        try:
+            from brave_search_python_client import BraveSearch, WebSearchRequest
+
+            bs = BraveSearch(api_key=self._brave_api_key)
+            response = await bs.web(WebSearchRequest(q=query, count=count))
+            if not response.web or not response.web.results:
+                return f"No results found for: {query}"
+            lines = []
+            for r in response.web.results:
+                title = getattr(r, "title", "")
+                url = getattr(r, "url", "")
+                desc = getattr(r, "description", "")
+                lines.append(f"**{title}**\n{url}\n{desc}")
+            return "\n\n".join(lines)
+        except Exception as e:
+            log.exception("Web search error")
+            return f"Search error: {e}"
+
     async def _handle_tool_call(self, name: str, arguments: dict) -> str:
         """Execute a tool call and return the result as a string."""
         if name == "play_animation":
@@ -392,6 +443,9 @@ class ChatHandler:
             return self._handle_state_list()
         if name == "state_check_time":
             return self._handle_state_check_time(arguments)
+
+        if name == "web_search":
+            return await self._handle_web_search(arguments)
 
         if self._mcp.has_tool(name):
             return await self._mcp.call_tool(name, arguments)

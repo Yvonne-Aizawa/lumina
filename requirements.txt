@@ -6,3 +6,5 @@ httpx
 requests
 faster-whisper
 nvidia-cublas-cu12
+brave-search-python-client
+psutil

@@ -63,11 +63,17 @@ async def lifespan(app: FastAPI):
         animation_names=list_animations(),
         play_animation_fn=play_animation,
         notify_tool_call_fn=notify_tool_call,
+        brave_api_key=config.get("brave", {}).get("api_key")
+        if config.get("brave", {}).get("enabled")
+        else None,
     )
 
     log.info(f"Available animations: {list_animations()}")
     log.info(
         f"MCP tools: {[t['function']['name'] for t in mcp_manager.get_openai_tools()]}"
+    )
+    log.info(
+        f"Brave Search: {'enabled' if config.get('brave', {}).get('enabled') else 'disabled'}"
     )
 
     # Initialise subsystems
