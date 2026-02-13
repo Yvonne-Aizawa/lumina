@@ -133,6 +133,19 @@ GPT-SoVITS must be running separately and accessible at the URL configured in `t
 
 If `model_file` is omitted, it defaults to `{keyword}.onnx`.
 
+# get assets
+### vrm models.
+
+you can use https://vroid.com/studio to make a model. its free on steam
+
+### how to get animations
+
+i just downloaded a bunch from https://www.mixamo.com/#/
+
+### How to get wake word models.
+
+i got mine from https://openwakeword.com/library
+
 ## License
 
 MIT
