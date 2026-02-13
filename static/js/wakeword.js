@@ -12,7 +12,7 @@ let loaded = false;
 let keyword = "hey_jarvis";
 let modelFile = null;
 
-const SILENCE_TIMEOUT_MS = 1500;
+const SILENCE_TIMEOUT_MS = 10000;
 
 async function initWakeWord() {
   const btn = document.getElementById("wakeword-toggle");
@@ -81,7 +81,7 @@ async function loadEngine() {
   engine.on("speech-end", () => {
     if (recording) {
       clearTimeout(silenceTimer);
-      silenceTimer = setTimeout(stopRecording, 500);
+      silenceTimer = setTimeout(stopRecording, 1000);
     }
   });
 
