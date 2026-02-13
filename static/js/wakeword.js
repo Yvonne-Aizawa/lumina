@@ -167,10 +167,6 @@ function startRecording() {
 
         const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
 
-        // Pause during transcription + AI response + TTS playback.
-        // The websocket audio handler will call resumeWakeWord() when done.
-        pauseWakeWord();
-
         try {
           const form = new FormData();
           form.append("file", blob, "recording.webm");
@@ -183,19 +179,16 @@ function startRecording() {
             await sendMessage(data.text);
           } else if (data.error) {
             addMessage("assistant", `STT error: ${data.error}`);
-            resumeWakeWord();
           }
         } catch {
           addMessage("assistant", "STT request failed.");
-          resumeWakeWord();
         }
 
-        // If no TTS audio will play, resume now.
-        // If TTS audio plays, websocket.js will call resumeWakeWord() when audio ends.
-        // Use a fallback timeout to resume in case no audio comes.
-        setTimeout(() => {
-          if (paused && active) resumeWakeWord();
-        }, 5000);
+        // Re-enable wake word detection now that send is complete.
+        // If TTS audio is playing, the websocket handler will have
+        // called pauseWakeWord() and will resumeWakeWord() when done,
+        // so reactivate() will be a no-op in that case (paused=true).
+        reactivate();
       };
       mediaRecorder.start();
 
