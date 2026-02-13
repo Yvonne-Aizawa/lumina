@@ -2,7 +2,6 @@ const chatMessages = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
 const chatSend = document.getElementById("chat-send");
 const chatMic = document.getElementById("chat-mic");
-const toolcallToggle = document.getElementById("toolcall-toggle");
 
 let sending = false;
 let showToolCalls = localStorage.getItem("showToolCalls") !== "false";
@@ -64,23 +63,19 @@ async function sendMessage(text) {
   chatInput.focus();
 }
 
-function updateToolCallToggle() {
-  toolcallToggle.classList.toggle("active", showToolCalls);
-}
-
-function toggleToolCalls() {
-  showToolCalls = !showToolCalls;
+function setShowToolCalls(value) {
+  showToolCalls = value;
   localStorage.setItem("showToolCalls", showToolCalls);
-  updateToolCallToggle();
   chatMessages.querySelectorAll(".tool-call").forEach((el) => {
     el.style.display = showToolCalls ? "" : "none";
   });
 }
 
-function initChat() {
-  updateToolCallToggle();
-  toolcallToggle.addEventListener("click", toggleToolCalls);
+function getShowToolCalls() {
+  return showToolCalls;
+}
 
+function initChat() {
   chatSend.addEventListener("click", () => sendMessage());
   chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -166,4 +161,11 @@ function initChat() {
   });
 }
 
-export { addMessage, addToolCall, sendMessage, initChat };
+export {
+  addMessage,
+  addToolCall,
+  sendMessage,
+  initChat,
+  setShowToolCalls,
+  getShowToolCalls,
+};

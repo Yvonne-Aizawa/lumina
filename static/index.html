@@ -18,6 +18,20 @@
         <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     </head>
     <body>
+        <button id="settings-btn" title="Settings">&#9881;</button>
+        <div id="settings-panel">
+            <div id="settings-header">
+                <span>Settings</span>
+                <button id="settings-close">&times;</button>
+            </div>
+            <div id="settings-body">
+                <label class="setting-toggle">
+                    <input type="checkbox" id="setting-toolcalls" />
+                    <span>Show tool calls</span>
+                </label>
+            </div>
+        </div>
+        <div id="settings-overlay" class="hidden"></div>
         <div id="heartbeat-indicator" class="hidden"></div>
         <div id="chat-container">
             <div id="chat-messages"></div>
@@ -39,12 +53,6 @@
                     Mic
                 </button>
                 <button id="chat-send">Send</button>
-                <button
-                    id="toolcall-toggle"
-                    title="Toggle tool call visibility"
-                >
-                    TC
-                </button>
             </div>
         </div>
         <script type="module" src="/static/js/app.js"></script>

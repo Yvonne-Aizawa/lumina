@@ -11,6 +11,7 @@ import {
 } from "./animations.js";
 import { connectWebSocket } from "./websocket.js";
 import { initChat } from "./chat.js";
+import { initSettings } from "./settings.js";
 import { initWakeWord } from "./wakeword.js";
 
 let mixer = null;
@@ -68,8 +69,9 @@ loader.load(
   },
 );
 
-// Init chat UI
+// Init UI
 initChat();
+initSettings();
 
 // Init wake word (async, non-blocking)
 initWakeWord().catch((e) => console.warn("Wake word init failed:", e));
