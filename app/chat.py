@@ -3,22 +3,18 @@
 import asyncio
 import json
 import logging
-import os
-from datetime import datetime, timezone
 from pathlib import Path
 
 from openai import AsyncOpenAI
 
 from .mcp_manager import MCPManager
+from .tools import get_builtin_tools, handle_tool_call
 
 log = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 10
-PROJECT_DIR = Path(__file__).parent.parent
-MEMORIES_DIR = PROJECT_DIR / "state" / "memories"
-SOUL_DIR = PROJECT_DIR / "state" / "soul"
+SOUL_DIR = Path(__file__).parent.parent / "state" / "soul"
 HEARTBEAT_PATH = SOUL_DIR / "heartbeat.md"
-STATE_PATH = PROJECT_DIR / "state" / "state.json"
 
 
 def load_soul() -> str:
@@ -61,493 +57,23 @@ class ChatHandler:
         self._messages: list[dict] = []
         self._lock = asyncio.Lock()
 
-    def _get_builtin_tools(self) -> list[dict]:
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "play_animation",
-                    "description": (
-                        "Play an animation on the 3D avatar. "
-                        "Use this to express emotions or actions visually."
-                    ),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string",
-                                "description": "The animation to play.",
-                                "enum": self._animation_names,
-                            }
-                        },
-                        "required": ["name"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "memory_create",
-                    "description": "Create a new memory as a markdown file. Use this to remember important information about the user or conversations.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {
-                                "type": "string",
-                                "description": "Name for the memory file (without .md extension).",
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "Markdown content to write to the memory file.",
-                            },
-                        },
-                        "required": ["filename", "content"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "memory_read",
-                    "description": "Read a memory file. Use this to recall previously stored information.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {
-                                "type": "string",
-                                "description": "Name of the memory file to read (without .md extension). Use 'all' to list all memory files.",
-                            },
-                        },
-                        "required": ["filename"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "memory_edit",
-                    "description": "Edit an existing memory file by replacing its content.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {
-                                "type": "string",
-                                "description": "Name of the memory file to edit (without .md extension).",
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "New markdown content for the memory file.",
-                            },
-                        },
-                        "required": ["filename", "content"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "memory_delete",
-                    "description": "Delete a memory file.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {
-                                "type": "string",
-                                "description": "Name of the memory file to delete (without .md extension).",
-                            },
-                        },
-                        "required": ["filename"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "memory_patch",
-                    "description": "Patch a memory file by replacing a specific substring with new text. Use this for small edits instead of rewriting the whole file.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "filename": {
-                                "type": "string",
-                                "description": "Name of the memory file to patch (without .md extension).",
-                            },
-                            "old_string": {
-                                "type": "string",
-                                "description": "The exact text to find and replace.",
-                            },
-                            "new_string": {
-                                "type": "string",
-                                "description": "The text to replace it with.",
-                            },
-                        },
-                        "required": ["filename", "old_string", "new_string"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "memory_list",
-                    "description": "List all saved memory files by name.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "state_set",
-                    "description": "Set a key in the persistent state store. Value can be any type (string, number, boolean, array, object). Use the string 'now' to store the current timestamp.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "key": {
-                                "type": "string",
-                                "description": "The state name / key to set.",
-                            },
-                            "value": {
-                                "description": "The value to store. Can be any JSON type (string, number, boolean, array, object). Use the string 'now' to store the current timestamp.",
-                            },
-                        },
-                        "required": ["key", "value"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "state_get",
-                    "description": "Get a single value from the persistent state store.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "key": {
-                                "type": "string",
-                                "description": "The key to look up.",
-                            },
-                        },
-                        "required": ["key"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "state_list",
-                    "description": "List all keys and values in the persistent state store.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "state_check_time",
-                    "description": "Check how long ago a timestamp was stored for a key. Returns elapsed time in human-readable form and seconds.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "key": {
-                                "type": "string",
-                                "description": "The key holding a timestamp value.",
-                            },
-                        },
-                        "required": ["key"],
-                    },
-                },
-            },
-        ]
-        if self._brave_api_key is not None:
-            tools.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "web_search",
-                        "description": "Search the web using Brave Search. Use this to find current information, answer questions about recent events, or look up facts.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query": {
-                                    "type": "string",
-                                    "description": "The search query.",
-                                },
-                                "count": {
-                                    "type": "integer",
-                                    "description": "Number of results to return (default 5, max 20).",
-                                },
-                            },
-                            "required": ["query"],
-                        },
-                    },
-                }
-            )
-        if self._bash_enabled:
-            tools.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "run_command",
-                        "description": "Execute a bash command on the server and return its output.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "command": {
-                                    "type": "string",
-                                    "description": "The bash command to execute.",
-                                },
-                            },
-                            "required": ["command"],
-                        },
-                    },
-                }
-            )
-        return tools
-
     def _get_all_tools(self) -> list[dict]:
-        return self._get_builtin_tools() + self._mcp.get_openai_tools()
-
-    def _safe_filename(self, filename: str) -> Path:
-        """Sanitize filename and return the full path in the memories dir."""
-        # Strip .md if provided, sanitize to prevent path traversal
-        name = filename.removesuffix(".md")
-        name = Path(name).name  # strips any directory components
-        return MEMORIES_DIR / f"{name}.md"
-
-    def _handle_memory_create(self, arguments: dict) -> str:
-        filename = arguments.get("filename", "")
-        content = arguments.get("content", "")
-        if not filename:
-            return "Error: filename is required."
-        path = self._safe_filename(filename)
-        if path.exists():
-            return f"Memory '{filename}' already exists. Use memory_edit to update it."
-        MEMORIES_DIR.mkdir(exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-        return f"Memory '{filename}' created."
-
-    def _handle_memory_list(self) -> str:
-        MEMORIES_DIR.mkdir(exist_ok=True)
-        files = sorted(p.stem for p in MEMORIES_DIR.glob("*.md"))
-        if not files:
-            return "No memories found."
-        return "Memories:\n" + "\n".join(f"- {f}" for f in files)
-
-    def _handle_memory_read(self, arguments: dict) -> str:
-        filename = arguments.get("filename", "")
-        if not filename:
-            return "Error: filename is required."
-        path = self._safe_filename(filename)
-        if not path.exists():
-            return f"Memory '{filename}' not found."
-        return path.read_text(encoding="utf-8")
-
-    def _handle_memory_edit(self, arguments: dict) -> str:
-        filename = arguments.get("filename", "")
-        content = arguments.get("content", "")
-        if not filename:
-            return "Error: filename is required."
-        path = self._safe_filename(filename)
-        if not path.exists():
-            return f"Memory '{filename}' not found. Use memory_create to create it."
-        path.write_text(content, encoding="utf-8")
-        return f"Memory '{filename}' updated."
-
-    def _handle_memory_delete(self, arguments: dict) -> str:
-        filename = arguments.get("filename", "")
-        if not filename:
-            return "Error: filename is required."
-        path = self._safe_filename(filename)
-        if not path.exists():
-            return f"Memory '{filename}' not found."
-        path.unlink()
-        return f"Memory '{filename}' deleted."
-
-    def _handle_memory_patch(self, arguments: dict) -> str:
-        filename = arguments.get("filename", "")
-        old_string = arguments.get("old_string", "")
-        new_string = arguments.get("new_string", "")
-        if not filename:
-            return "Error: filename is required."
-        if not old_string:
-            return "Error: old_string is required."
-        path = self._safe_filename(filename)
-        if not path.exists():
-            return f"Memory '{filename}' not found."
-        content = path.read_text(encoding="utf-8")
-        count = content.count(old_string)
-        if count == 0:
-            return f"Error: old_string not found in memory '{filename}'."
-        if count > 1:
-            return f"Error: old_string matches {count} times in memory '{filename}'. Provide a more specific string."
-        content = content.replace(old_string, new_string, 1)
-        path.write_text(content, encoding="utf-8")
-        return f"Memory '{filename}' patched."
-
-    def _load_state(self) -> dict:
-        if STATE_PATH.exists():
-            try:
-                return json.loads(STATE_PATH.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                return {}
-        return {}
-
-    def _save_state(self, state: dict):
-        STATE_PATH.write_text(
-            json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8"
+        return (
+            get_builtin_tools(
+                self._animation_names, self._brave_api_key, self._bash_enabled
+            )
+            + self._mcp.get_openai_tools()
         )
 
-    def _handle_state_set(self, arguments: dict) -> str:
-        key = str(arguments.get("key", "")).strip()
-        if not key:
-            return "Error: key is required."
-        value = arguments.get("value")
-        if value == "now":
-            value = datetime.now(timezone.utc).isoformat()
-        state = self._load_state()
-        state[key] = value
-        self._save_state(state)
-        return f"State '{key}' set to {json.dumps(value)}."
-
-    def _handle_state_get(self, arguments: dict) -> str:
-        key = str(arguments.get("key", "")).strip()
-        if not key:
-            return "Error: key is required."
-        state = self._load_state()
-        if key not in state:
-            return f"Key '{key}' not found."
-        return f"{key}: {json.dumps(state[key])}"
-
-    def _handle_state_list(self) -> str:
-        state = self._load_state()
-        if not state:
-            return "State is empty."
-        lines = [f"- {k}: {json.dumps(v)}" for k, v in state.items()]
-        return "State:\n" + "\n".join(lines)
-
-    def _handle_state_check_time(self, arguments: dict) -> str:
-        key = arguments.get("key", "").strip()
-        if not key:
-            return "Error: key is required."
-        state = self._load_state()
-        if key not in state:
-            return f"Key '{key}' not found."
-        value = state[key]
-        try:
-            ts = datetime.fromisoformat(value)
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            now = datetime.now(timezone.utc)
-            delta = now - ts
-            total_seconds = int(delta.total_seconds())
-            hours, remainder = divmod(abs(total_seconds), 3600)
-            minutes, seconds = divmod(remainder, 60)
-            parts = []
-            if hours:
-                parts.append(f"{hours}h")
-            if minutes:
-                parts.append(f"{minutes}m")
-            parts.append(f"{seconds}s")
-            human = " ".join(parts)
-            return (
-                f"'{key}' was {human} ago ({total_seconds} seconds). Timestamp: {value}"
-            )
-        except (ValueError, TypeError):
-            return f"Error: '{key}' value '{value}' is not a valid timestamp."
-
-    async def _handle_web_search(self, arguments: dict) -> str:
-        query = arguments.get("query", "").strip()
-        if not query:
-            return "Error: query is required."
-        count = min(int(arguments.get("count", 5)), 20)
-        try:
-            from brave_search_python_client import BraveSearch, WebSearchRequest
-
-            bs = BraveSearch(api_key=self._brave_api_key)
-            response = await bs.web(WebSearchRequest(q=query, count=count))
-            if not response.web or not response.web.results:
-                return f"No results found for: {query}"
-            lines = []
-            for r in response.web.results:
-                title = getattr(r, "title", "")
-                url = getattr(r, "url", "")
-                desc = getattr(r, "description", "")
-                lines.append(f"**{title}**\n{url}\n{desc}")
-            return "\n\n".join(lines)
-        except Exception as e:
-            log.exception("Web search error")
-            return f"Search error: {e}"
-
-    async def _handle_run_command(self, arguments: dict) -> str:
-        command = arguments.get("command", "").strip()
-        if not command:
-            return "Error: command is required."
-        try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
-            output = stdout.decode(errors="replace").strip()
-            if len(output) > 4000:
-                output = output[:4000] + "\n... (truncated)"
-            return (
-                output
-                if output
-                else f"Command exited with code {proc.returncode} (no output)."
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
-            return "Error: command timed out after 30 seconds."
-        except Exception as e:
-            return f"Error running command: {e}"
-
-    async def _handle_tool_call(self, name: str, arguments: dict) -> str:
-        """Execute a tool call and return the result as a string."""
-        if name == "play_animation":
-            anim_name = arguments.get("name", "")
-            if anim_name in self._animation_names:
-                await self._play_animation(anim_name)
-                return f"Now playing animation: {anim_name}"
-            else:
-                return f"Unknown animation: {anim_name}. Available: {', '.join(self._animation_names)}"
-
-        if name == "memory_list":
-            return self._handle_memory_list()
-        if name == "memory_create":
-            return self._handle_memory_create(arguments)
-        if name == "memory_read":
-            return self._handle_memory_read(arguments)
-        if name == "memory_edit":
-            return self._handle_memory_edit(arguments)
-        if name == "memory_delete":
-            return self._handle_memory_delete(arguments)
-        if name == "memory_patch":
-            return self._handle_memory_patch(arguments)
-
-        if name == "state_set":
-            return self._handle_state_set(arguments)
-        if name == "state_get":
-            return self._handle_state_get(arguments)
-        if name == "state_list":
-            return self._handle_state_list()
-        if name == "state_check_time":
-            return self._handle_state_check_time(arguments)
-
-        if name == "web_search":
-            return await self._handle_web_search(arguments)
-        if name == "run_command":
-            return await self._handle_run_command(arguments)
-
-        if self._mcp.has_tool(name):
-            return await self._mcp.call_tool(name, arguments)
-
-        return f"Unknown tool: {name}"
+    async def _dispatch_tool(self, name: str, arguments: dict) -> str:
+        return await handle_tool_call(
+            name,
+            arguments,
+            animation_names=self._animation_names,
+            play_animation_fn=self._play_animation,
+            brave_api_key=self._brave_api_key,
+            mcp_manager=self._mcp,
+        )
 
     async def send_message(self, user_text: str) -> str:
         """Process a user message through the LLM with tool support."""
@@ -582,7 +108,7 @@ class ChatHandler:
                     log.info(f"Tool call: {fn_name}({fn_args})")
                     if self._notify_tool_call:
                         await self._notify_tool_call(fn_name, fn_args)
-                    result = await self._handle_tool_call(fn_name, fn_args)
+                    result = await self._dispatch_tool(fn_name, fn_args)
 
                     messages.append(
                         {
@@ -679,7 +205,7 @@ class ChatHandler:
                         )
                     else:
                         log.info(f"Heartbeat tool call: {fn_name}({fn_args})")
-                        result = await self._handle_tool_call(fn_name, fn_args)
+                        result = await self._dispatch_tool(fn_name, fn_args)
                         messages.append(
                             {
                                 "role": "tool",
