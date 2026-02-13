@@ -16,21 +16,25 @@ const SILENCE_TIMEOUT_MS = 1500;
 async function initWakeWord() {
   const btn = document.getElementById("wakeword-toggle");
 
-  btn.classList.remove("hidden");
-
-  // Check if STT is enabled
+  // Check if STT and wakeword are enabled
   try {
     const res = await fetch("/api/stt/status");
     const data = await res.json();
+    if (!data.wakeword_enabled) {
+      return;
+    }
     if (!data.enabled) {
-      btn.classList.add("disabled");
+      console.warn(
+        "Wake word is enabled but STT is disabled. Enable STT in config to use wake word.",
+      );
       return;
     }
     if (data.wakeword) keyword = data.wakeword;
   } catch {
-    btn.classList.add("disabled");
     return;
   }
+
+  btn.classList.remove("hidden");
 
   btn.addEventListener("click", toggleWakeWord);
 }
