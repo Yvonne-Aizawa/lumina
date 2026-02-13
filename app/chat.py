@@ -116,7 +116,11 @@ class ChatHandler:
                         "id": data.get("id", path.stem),
                         "title": data.get("title", ""),
                         "started_at": data.get("started_at", ""),
-                        "message_count": len(data.get("messages", [])),
+                        "message_count": sum(
+                            1
+                            for m in data.get("messages", [])
+                            if m.get("role") in ("user", "assistant")
+                        ),
                     }
                 )
             except (json.JSONDecodeError, OSError):
