@@ -82,6 +82,25 @@ def init_wakeword(config: WakeWordConfig):
     wakeword_model_file = config.model_file
 
 
+# Common Whisper hallucinations on silence/quiet audio (from YouTube training data)
+HALLUCINATION_PHRASES = {
+    "thank you for watching",
+    "thanks for watching",
+    "thank you for listening",
+    "thanks for listening",
+    "subscribe",
+    "like and subscribe",
+    "please subscribe",
+    "thank you",
+    "thanks",
+    "bye",
+    "goodbye",
+    "see you next time",
+    "see you in the next video",
+    "you",
+}
+
+
 async def transcribe(audio_bytes: bytes) -> str:
     """Transcribe audio bytes using the loaded Whisper model. Returns text."""
 
@@ -90,6 +109,10 @@ async def transcribe(audio_bytes: bytes) -> str:
             tmp.write(audio_bytes)
             tmp.flush()
             segments, _ = stt_model.transcribe(tmp.name, language=stt_language)
-            return "".join(s.text for s in segments).strip()
+            text = "".join(s.text for s in segments).strip()
+            # Filter out Whisper hallucinations on silence
+            if text.lower().rstrip(".!,") in HALLUCINATION_PHRASES:
+                return ""
+            return text
 
     return await asyncio.get_event_loop().run_in_executor(None, _transcribe)
