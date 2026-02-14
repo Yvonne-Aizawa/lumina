@@ -25,7 +25,7 @@ No tests or linting are configured.
 
 **`server.py`** — Thin launcher. Imports the FastAPI app from `app/server.py` and runs uvicorn.
 
-**`app/server.py`** — FastAPI app, lifespan orchestrator, and route handlers. The lifespan function calls init functions from the subsystem modules below. Routes: `/` (frontend), `/api/chat` (POST), `/api/animations` (GET), `/api/play/{name}` (POST), `/api/chat/clear` (POST), `/api/stt/status` (GET), `/api/transcribe` (POST), `/ws` (WebSocket).
+**`app/server.py`** — FastAPI app, lifespan orchestrator, and route handlers. The lifespan function calls init functions from the subsystem modules below. Routes: `/` (frontend), `/api/chat` (POST), `/api/animations` (GET), `/api/play/{name}` (POST), `/api/chat/clear` (POST), `/api/chats` (GET), `/api/chats/new` (POST), `/api/chats/load` (POST), `/api/stt/status` (GET), `/api/transcribe` (POST), `/ws` (WebSocket).
 
 **`app/config.py`** — Path constants (`PROJECT_DIR`, `ASSETS_DIR`, `ANIMS_DIR`, `MODELS_DIR`, `CONFIG_PATH`) and `load_config()`.
 
@@ -33,7 +33,7 @@ No tests or linting are configured.
 
 **`app/tts.py`** — TTS client. `init_tts(config)` loads settings, `synthesize_and_broadcast(text)` calls GPT-SoVITS and broadcasts base64 audio via WebSocket.
 
-**`app/stt.py`** — STT model. `init_stt(config)` loads faster-whisper in a thread executor (with NVIDIA CUDA libraries pre-loaded via `ctypes`). `transcribe(audio_bytes)` runs transcription in a thread executor.
+**`app/stt.py`** — STT model. `init_stt(config)` loads faster-whisper in a thread executor (with NVIDIA CUDA libraries pre-loaded via `ctypes`). `transcribe(audio_bytes)` runs transcription in a thread executor. `is_enabled()` getter returns live state (do not import the `stt_enabled` variable directly — it's set after import time).
 
 **`app/wakeword.py`** — Server-side wake word detection using openwakeword. `init_wakeword(config)` loads the ONNX keyword model at startup. Browser streams 16kHz Int16 PCM audio over WebSocket binary frames; `process_audio(client_id, data)` runs detection and returns matches. Per-client pause/resume state for muting during TTS playback.
 
@@ -45,10 +45,11 @@ No tests or linting are configured.
 
 **`static/`** — Frontend ES modules served via FastAPI's StaticFiles mount:
 - `app.js` — Entry point. Loads VRM, preloads animations, starts render loop, initializes chat and wake word.
-- `animations.js` — Mixamo FBX-to-VRM retargeting.
-- `websocket.js` — Auto-reconnecting WebSocket for animation playback, heartbeat, TTS audio playback, and wake word detection events. Exports `getWebSocket()` for the wakeword module to send binary audio. Pauses/resumes wake word during audio. Background tabs skip audio playback (`document.hidden`).
+- `animations.js` — Mixamo FBX-to-VRM retargeting. Crossfade blending between animations (0.3s transitions).
+- `websocket.js` — Auto-reconnecting WebSocket for animation playback, heartbeat, TTS audio playback, and wake word detection events. Exports `getWebSocket()` for the wakeword module to send binary audio. Pauses/resumes wake word during audio. Triggers auto-listen window after TTS playback. Background tabs skip audio playback (`document.hidden`).
 - `chat.js` — Chat UI, push-to-talk mic recording, sends audio to `/api/transcribe`. `sendMessage()` is exported for use by other modules (wake word). Assistant messages are rendered as markdown via `marked.js` (CDN).
-- `wakeword.js` — Streams mic audio to server for wake word detection. AudioWorklet resamples to 16kHz Int16 PCM and sends binary frames over WebSocket. On server detection event: records speech via MediaRecorder, transcribes via `/api/transcribe`, sends through chat. Sends pause/resume control messages during TTS playback.
+- `wakeword.js` — Streams mic audio to server for wake word detection. AudioWorklet resamples to 16kHz Int16 PCM and sends binary frames over WebSocket. On server detection event: records speech via MediaRecorder, transcribes via `/api/transcribe`, sends through chat. Sends pause/resume control messages during TTS playback. Auto-listen window (5s) after TTS ends if last input was voice. Voice status indicator: listening/recording/transcribing/playing states.
+- `settings.js` — Settings panel with tool call toggle, hide UI button, chat history management.
 
 **`assets/wakeword/models/`** — ONNX keyword model files used by server-side openwakeword.
 
@@ -110,7 +111,8 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
   "wakeword": {                     // Optional: server-side wake word detection
     "enabled": false,
     "keyword": "hey_jarvis",        // Must match a model in assets/wakeword/models/
-    "model_file": "custom.onnx"     // Optional: override model filename
+    "model_file": "custom.onnx",    // Optional: override model filename
+    "auto_start": false             // Auto-enable wake word, hide wake button
   },
   "tts": {                          // Optional: GPT-SoVITS text-to-speech
     "enabled": false,
