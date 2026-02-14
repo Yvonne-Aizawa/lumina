@@ -25,7 +25,7 @@ No tests or linting are configured.
 
 **`server.py`** — Thin launcher. Imports the FastAPI app from `app/server.py` and runs uvicorn.
 
-**`app/server.py`** — FastAPI app, lifespan orchestrator, and route handlers. The lifespan function calls init functions from the subsystem modules below. Routes: `/` (frontend), `/api/chat` (POST), `/api/animations` (GET), `/api/play/{name}` (POST), `/api/chat/clear` (POST), `/api/chats` (GET), `/api/chats/new` (POST), `/api/chats/load` (POST), `/api/stt/status` (GET), `/api/transcribe` (POST), `/ws` (WebSocket).
+**`app/server.py`** — FastAPI app, lifespan orchestrator, and route handlers. The lifespan function calls init functions from the subsystem modules below. Routes: `/` (frontend), `/api/chat` (POST), `/api/animations` (GET), `/api/play/{name}` (POST), `/api/chat/clear` (POST), `/api/chats` (GET), `/api/chats/new` (POST), `/api/chats/load` (POST), `/api/stt/status` (GET), `/api/transcribe` (POST), `/ws` (WebSocket). Auth routes are mounted from `app/auth.py`. All API routes use `Depends(require_auth)`; WebSocket checks token via query param; static files and `/`, `/api/auth/*` are unprotected.
 
 **`app/config.py`** — Path constants (`PROJECT_DIR`, `ASSETS_DIR`, `ANIMS_DIR`, `MODELS_DIR`, `CONFIG_PATH`) and `load_config()`.
 
@@ -41,13 +41,16 @@ No tests or linting are configured.
 
 **`app/chat.py`** — Chat handler. Manages conversation history, LLM calls via OpenAI SDK, and tool execution loop (up to `MAX_TOOL_ROUNDS=10` iterations). Built-in tools: `play_animation`, `memory_create/read/edit/patch/delete/list`, `state_set/get/list/check_time`, `web_search` (Brave Search, when enabled). Also routes to MCP tools. The system prompt is built from `state/soul/` markdown files (excluding `heartbeat.md`), loaded once at init. Has a separate `heartbeat()` method for background prompts. An `asyncio.Lock` protects `_messages` for concurrency safety. `memory_patch` does string replacement (rejects if old_string matches 0 or >1 times).
 
+**`app/auth.py`** — Token-based API authentication. `init_auth(config)` loads settings. `require_auth` is a FastAPI dependency added to all protected routes — extracts `Authorization: Bearer <token>` and validates against the configured API key using `hmac.compare_digest()`. `require_ws_auth(websocket)` checks token from `?token=` query param. Routes: `POST /api/auth/login`, `GET /api/auth/check`, `GET /api/auth/status`. No-ops when auth is disabled.
+
 **`app/mcp_manager.py`** — MCP client manager. Connects to configured MCP servers via stdio on startup, discovers their tools, converts tool schemas to OpenAI function-calling format, and routes tool calls to the correct server session.
 
 **`static/`** — Frontend ES modules served via FastAPI's StaticFiles mount:
-- `app.js` — Entry point. Loads VRM, preloads animations, starts render loop, initializes chat and wake word.
+- `auth.js` — Auth module. `getToken()`/`setToken()`/`clearToken()` manage localStorage. `authFetch()` wraps `fetch()` with Bearer token header (shows login on 401). `checkAuth()` gates app init behind auth validation.
+- `app.js` — Entry point. Auth gate via `checkAuth()`, then loads VRM, preloads animations, starts render loop, initializes chat and wake word.
 - `animations.js` — Mixamo FBX-to-VRM retargeting. Crossfade blending between animations (0.3s transitions).
-- `websocket.js` — Auto-reconnecting WebSocket for animation playback, heartbeat, TTS audio playback, and wake word detection events. Exports `getWebSocket()` for the wakeword module to send binary audio. Pauses/resumes wake word during audio. Triggers auto-listen window after TTS playback. Background tabs skip audio playback (`document.hidden`).
-- `chat.js` — Chat UI, push-to-talk mic recording, sends audio to `/api/transcribe`. `sendMessage()` is exported for use by other modules (wake word). Assistant messages are rendered as markdown via `marked.js` (CDN).
+- `websocket.js` — Auto-reconnecting WebSocket for animation playback, heartbeat, TTS audio playback, and wake word detection events. Exports `getWebSocket()` for the wakeword module to send binary audio. Pauses/resumes wake word during audio. Triggers auto-listen window after TTS playback. Appends `?token=...` for auth. Background tabs skip audio playback (`document.hidden`).
+- `chat.js` — Chat UI, push-to-talk mic recording, sends audio to `/api/transcribe`. `sendMessage()` is exported for use by other modules (wake word). All fetch calls use `authFetch()`. Assistant messages are rendered as markdown via `marked.js` (CDN).
 - `wakeword.js` — Streams mic audio to server for wake word detection. AudioWorklet resamples to 16kHz Int16 PCM and sends binary frames over WebSocket. On server detection event: records speech via MediaRecorder, transcribes via `/api/transcribe`, sends through chat. Sends pause/resume control messages during TTS playback. Auto-listen window (5s) after TTS ends if last input was voice. Voice status indicator: listening/recording/transcribing/playing states.
 - `settings.js` — Settings panel with tool call toggle, hide UI button, chat history management.
 
@@ -130,6 +133,10 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
   "brave": {                         // Optional: Brave Search web tool
     "enabled": false,
     "api_key": "BSA..."
+  },
+  "auth": {                           // Optional: API authentication
+    "enabled": false,
+    "api_key": "your-secret-key"     // Shared secret for all clients
   },
   "mcpServers": {                    // Optional: MCP tool servers
     "server-name": {
