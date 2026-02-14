@@ -4,6 +4,8 @@ import {
   pauseWakeWord,
   resumeWakeWord,
   onWakeWordDetected,
+  startListenWindow,
+  setVoiceIndicator,
 } from "./wakeword.js";
 
 const heartbeatIndicator = document.getElementById("heartbeat-indicator");
@@ -43,6 +45,7 @@ function connectWebSocket() {
         }
         if (document.hidden) return;
         pauseWakeWord();
+        setVoiceIndicator("playing");
         const bytes = Uint8Array.from(atob(msg.data), (c) => c.charCodeAt(0));
         const blob = new Blob([bytes], { type: "audio/wav" });
         const audio = new Audio(URL.createObjectURL(blob));
@@ -50,15 +53,19 @@ function connectWebSocket() {
         audio.onended = () => {
           currentAudio = null;
           resumeWakeWord();
+          setVoiceIndicator("listening");
+          startListenWindow();
         };
         audio.onerror = () => {
           currentAudio = null;
           resumeWakeWord();
+          setVoiceIndicator("listening");
         };
         audio.play().catch((e) => {
           console.warn("Audio playback failed:", e);
           currentAudio = null;
           resumeWakeWord();
+          setVoiceIndicator("listening");
         });
       } else if (msg.action === "heartbeat") {
         heartbeatIndicator.classList.toggle("hidden", msg.status !== "start");

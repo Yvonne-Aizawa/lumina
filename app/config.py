@@ -32,6 +32,7 @@ class WakeWordConfig:
     enabled: bool = False
     keyword: str = "hey_jarvis"
     model_file: str | None = None
+    auto_start: bool = False
 
 
 @dataclass

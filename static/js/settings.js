@@ -11,6 +11,7 @@ const openBtn = document.getElementById("settings-btn");
 const closeBtn = document.getElementById("settings-close");
 const toolcallCheckbox = document.getElementById("setting-toolcalls");
 const newChatBtn = document.getElementById("new-chat-btn");
+const hideUiBtn = document.getElementById("hide-ui-btn");
 const chatList = document.getElementById("chat-list");
 
 let currentSessionId = null;
@@ -126,6 +127,18 @@ function initSettings() {
   });
 
   newChatBtn.addEventListener("click", newChat);
+
+  hideUiBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closePanel();
+    document.body.classList.add("ui-hidden");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!document.body.classList.contains("ui-hidden")) return;
+    if (e.target.closest("#heartbeat-indicator, #voice-indicator")) return;
+    document.body.classList.remove("ui-hidden");
+  });
 
   // Load initial chat list
   loadChatList();

@@ -27,6 +27,33 @@ canvas {
 #heartbeat-indicator.hidden {
     display: none;
 }
+#voice-indicator {
+    position: absolute;
+    top: 16px;
+    right: 36px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    pointer-events: none;
+}
+#voice-indicator.hidden {
+    display: none;
+}
+#voice-indicator.listening {
+    background: rgba(34, 197, 94, 0.8);
+}
+#voice-indicator.recording {
+    background: rgba(239, 68, 68, 0.8);
+    animation: pulse 1s ease-in-out infinite;
+}
+#voice-indicator.transcribing {
+    background: rgba(249, 163, 40, 0.8);
+    animation: pulse 1s ease-in-out infinite;
+}
+#voice-indicator.playing {
+    background: rgba(139, 92, 246, 0.8);
+    animation: pulse 1.5s ease-in-out infinite;
+}
 @keyframes pulse {
     0%,
     100% {
@@ -43,14 +70,14 @@ canvas {
     bottom: 32px;
     left: 50%;
     transform: translateX(-50%);
-    width: 500px;
+    /*width: 500px;*/
     max-width: 90vw;
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 #chat-messages {
-    max-height: 300px;
+    /*max-height: 300px;*/
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -108,16 +135,19 @@ canvas {
     padding: 12px 20px;
     border: none;
     border-radius: 24px;
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.6);
     color: #fff;
     font-family: sans-serif;
     font-size: 16px;
     cursor: pointer;
     backdrop-filter: blur(10px);
 }
+#chat-send.hidden {
+    display: none;
+}
 #chat-send:hover,
 #chat-mic:hover {
-    background: rgba(255, 255, 255, 0.25);
+    background: rgba(0, 0, 0, 0.8);
 }
 #chat-mic {
     padding: 12px 20px;
@@ -232,6 +262,24 @@ canvas {
     height: 1px;
     background: rgba(255, 255, 255, 0.1);
     margin: 4px 0;
+}
+#hide-ui-btn {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-family: sans-serif;
+    font-size: 14px;
+    cursor: pointer;
+}
+#hide-ui-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+body.ui-hidden #chat-container,
+body.ui-hidden #settings-btn {
+    display: none;
 }
 #new-chat-btn {
     width: 100%;

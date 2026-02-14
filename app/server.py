@@ -22,7 +22,8 @@ from .chat import ChatHandler
 from .config import ANIMS_DIR, MODELS_DIR, PROJECT_DIR, Config, load_config
 from .heartbeat import record_user_interaction, start_heartbeat
 from .mcp_manager import MCPManager
-from .stt import init_stt, stt_enabled, stt_model, transcribe
+from .stt import init_stt, transcribe
+from .stt import is_enabled as stt_is_enabled
 from .tts import init_tts, synthesize_and_broadcast
 
 logging.basicConfig(level=logging.INFO)
@@ -170,17 +171,16 @@ async def api_chats_load(req: ChatLoadRequest):
 @app.get("/api/stt/status")
 async def api_stt_status():
     return {
-        "enabled": stt_enabled,
+        "enabled": stt_is_enabled(),
         "wakeword": wakeword.get_keyword(),
         "wakeword_enabled": wakeword.is_enabled(),
+        "wakeword_auto_start": wakeword.is_auto_start(),
     }
 
 
 @app.post("/api/transcribe")
 async def api_transcribe(file: UploadFile):
-    from .stt import stt_enabled, stt_model
-
-    if not stt_enabled or stt_model is None:
+    if not stt_is_enabled():
         return {"error": "STT not enabled"}
     try:
         audio_bytes = await file.read()

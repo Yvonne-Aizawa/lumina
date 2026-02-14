@@ -4,6 +4,7 @@ import { getWebSocket } from "./websocket.js";
 let active = false;
 let recording = false;
 let paused = false;
+let lastInputWasVoice = false;
 let mediaRecorder = null;
 let audioChunks = [];
 let silenceTimer = null;
@@ -13,8 +14,23 @@ let audioContext = null;
 let workletNode = null;
 let mediaStream = null;
 
+const voiceIndicator = document.getElementById("voice-indicator");
+
+function setVoiceIndicator(state) {
+  voiceIndicator.classList.remove(
+    "hidden",
+    "listening",
+    "recording",
+    "transcribing",
+    "playing",
+  );
+  if (state) voiceIndicator.classList.add(state);
+  else voiceIndicator.classList.add("hidden");
+}
+
 const SILENCE_TIMEOUT_MS = 10000;
 const SPEECH_END_DELAY_MS = 1000;
+const LISTEN_WINDOW_MS = 5000;
 const TARGET_SAMPLE_RATE = 16000;
 const FRAME_SIZE = 1280;
 
@@ -75,17 +91,28 @@ registerProcessor('audio-processor', AudioProcessor);
 async function initWakeWord() {
   const btn = document.getElementById("wakeword-toggle");
 
+  let data;
   try {
     const res = await fetch("/api/stt/status");
-    const data = await res.json();
+    data = await res.json();
     if (!data.wakeword_enabled) return;
     if (data.wakeword) keyword = data.wakeword;
   } catch {
     return;
   }
 
-  btn.classList.remove("hidden");
-  btn.addEventListener("click", toggleWakeWord);
+  if (data.wakeword_auto_start) {
+    try {
+      await startStreaming();
+      active = true;
+      setVoiceIndicator("listening");
+    } catch (err) {
+      console.error("Wake word auto-start failed:", err);
+    }
+  } else {
+    btn.classList.remove("hidden");
+    btn.addEventListener("click", toggleWakeWord);
+  }
 }
 
 async function toggleWakeWord() {
@@ -96,6 +123,7 @@ async function toggleWakeWord() {
     paused = false;
     btn.classList.remove("active");
     btn.textContent = "Wake";
+    setVoiceIndicator(null);
     if (recording) stopRecording();
   } else {
     try {
@@ -105,6 +133,7 @@ async function toggleWakeWord() {
       paused = false;
       btn.classList.add("active");
       btn.textContent = "Wake";
+      setVoiceIndicator("listening");
     } catch (err) {
       console.error("Wake word start failed:", err);
       addMessage("assistant", `Wake word failed: ${err.message}`);
@@ -205,7 +234,15 @@ function resumeWakeWord() {
   btn.classList.remove("paused");
 }
 
-function startRecording() {
+/** Start a short listen window (e.g. after TTS ends) without requiring the wake word */
+function startListenWindow() {
+  if (!active || recording || paused) return;
+  if (!lastInputWasVoice) return;
+  lastInputWasVoice = false;
+  startRecording(LISTEN_WINDOW_MS);
+}
+
+function startRecording(timeoutMs = SILENCE_TIMEOUT_MS) {
   if (recording) return;
 
   // Reuse the existing mic stream
@@ -215,6 +252,7 @@ function startRecording() {
   }
 
   recording = true;
+  setVoiceIndicator("recording");
   audioChunks = [];
   mediaRecorder = new MediaRecorder(mediaStream);
   mediaRecorder.ondataavailable = (e) => {
@@ -223,9 +261,13 @@ function startRecording() {
   mediaRecorder.onstop = async () => {
     recording = false;
 
-    if (audioChunks.length === 0) return;
+    if (audioChunks.length === 0) {
+      setVoiceIndicator("listening");
+      return;
+    }
 
     const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+    setVoiceIndicator("transcribing");
 
     try {
       const form = new FormData();
@@ -236,6 +278,7 @@ function startRecording() {
       });
       const data = await res.json();
       if (data.text) {
+        lastInputWasVoice = true;
         await sendMessage(data.text);
       } else if (data.error) {
         addMessage("assistant", `STT error: ${data.error}`);
@@ -243,9 +286,10 @@ function startRecording() {
     } catch {
       addMessage("assistant", "STT request failed.");
     }
+    setVoiceIndicator("listening");
   };
   mediaRecorder.start();
-  silenceTimer = setTimeout(stopRecording, SILENCE_TIMEOUT_MS);
+  silenceTimer = setTimeout(stopRecording, timeoutMs);
 }
 
 function stopRecording() {
@@ -258,4 +302,11 @@ function stopRecording() {
   }
 }
 
-export { initWakeWord, pauseWakeWord, resumeWakeWord, onWakeWordDetected };
+export {
+  initWakeWord,
+  pauseWakeWord,
+  resumeWakeWord,
+  onWakeWordDetected,
+  startListenWindow,
+  setVoiceIndicator,
+};
