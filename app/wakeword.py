@@ -38,9 +38,9 @@ async def init_wakeword(config: WakeWordConfig):
     try:
         from openwakeword.model import Model as OWWModel
 
-        from .config import PROJECT_DIR
+        from .config import ASSETS_DIR
 
-        models_dir = PROJECT_DIR / "static" / "wakeword" / "models"
+        models_dir = ASSETS_DIR / "wakeword" / "models"
 
         # Resolve model file path
         if config.model_file:

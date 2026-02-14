@@ -50,7 +50,7 @@ No tests or linting are configured.
 - `chat.js` — Chat UI, push-to-talk mic recording, sends audio to `/api/transcribe`. `sendMessage()` is exported for use by other modules (wake word). Assistant messages are rendered as markdown via `marked.js` (CDN).
 - `wakeword.js` — Streams mic audio to server for wake word detection. AudioWorklet resamples to 16kHz Int16 PCM and sends binary frames over WebSocket. On server detection event: records speech via MediaRecorder, transcribes via `/api/transcribe`, sends through chat. Sends pause/resume control messages during TTS playback.
 
-**`static/wakeword/models/`** — ONNX keyword model files used by server-side openwakeword.
+**`assets/wakeword/models/`** — ONNX keyword model files used by server-side openwakeword.
 
 ## Key Data Flow
 
@@ -109,7 +109,7 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
   },
   "wakeword": {                     // Optional: server-side wake word detection
     "enabled": false,
-    "keyword": "hey_jarvis",        // Must match a model in static/wakeword/models/
+    "keyword": "hey_jarvis",        // Must match a model in assets/wakeword/models/
     "model_file": "custom.onnx"     // Optional: override model filename
   },
   "tts": {                          // Optional: GPT-SoVITS text-to-speech
@@ -164,7 +164,7 @@ Drop Mixamo FBX files (exported as **FBX Binary**, **Without Skin**) into `asset
 
 ## Adding Wake Word Models
 
-Drop `.onnx` keyword model files into `static/wakeword/models/` and set `wakeword.keyword` in `config.json` — the model file defaults to `{keyword}.onnx`. Optionally set `wakeword.model_file` to override the filename.
+Drop `.onnx` keyword model files into `assets/wakeword/models/` and set `wakeword.keyword` in `config.json` — the model file defaults to `{keyword}.onnx`. Optionally set `wakeword.model_file` to override the filename.
 
 ## Animation Retargeting
 
