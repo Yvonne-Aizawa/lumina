@@ -4,7 +4,9 @@ import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 // Shared animation state
 let mixer = null;
 let currentAnimName = null;
+let currentAction = null;
 const animationClips = {}; // name -> clip
+const CROSSFADE_DURATION = 0.3;
 
 function setMixer(m) {
   mixer = m;
@@ -164,7 +166,7 @@ function loadMixamoAnimation(url, vrm) {
   });
 }
 
-// Play animation by name
+// Play animation by name with crossfade blending
 function playAnimationByName(name) {
   if (!mixer) return;
   const clip = animationClips[name];
@@ -182,31 +184,38 @@ function playAnimationByName(name) {
     mixer._onFinished = null;
   }
 
-  mixer.stopAllAction();
+  const previousAction = currentAction;
   const action = mixer.clipAction(clip);
   action.reset();
 
   if (!isIdle && idleClip) {
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = true;
-    action.play();
+  } else {
+    action.setLoop(THREE.LoopRepeat);
+  }
 
+  if (previousAction) {
+    action.crossFadeFrom(previousAction, CROSSFADE_DURATION, true);
+  }
+  action.play();
+  currentAction = action;
+  currentAnimName = name;
+
+  if (!isIdle && idleClip) {
     const onFinished = () => {
       mixer.removeEventListener("finished", onFinished);
       mixer._onFinished = null;
-      mixer.stopAllAction();
       const idleAction = mixer.clipAction(idleClip);
-      idleAction.reset().play();
+      idleAction.reset();
+      idleAction.crossFadeFrom(action, CROSSFADE_DURATION, true);
+      idleAction.play();
+      currentAction = idleAction;
       currentAnimName = "Idle";
     };
     mixer._onFinished = onFinished;
     mixer.addEventListener("finished", onFinished);
-  } else {
-    action.setLoop(THREE.LoopRepeat);
-    action.play();
   }
-
-  currentAnimName = name;
 }
 
 export {

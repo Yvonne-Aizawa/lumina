@@ -28,6 +28,7 @@
                     <input type="checkbox" id="setting-toolcalls" />
                     <span>Show tool calls</span>
                 </label>
+                <button id="hide-ui-btn">Hide UI</button>
                 <div class="settings-divider"></div>
                 <button id="new-chat-btn">New Chat</button>
                 <div id="chat-list-label">Chat History</div>
@@ -36,6 +37,7 @@
         </div>
         <div id="settings-overlay" class="hidden"></div>
         <div id="heartbeat-indicator" class="hidden"></div>
+        <div id="voice-indicator" class="hidden"></div>
         <div id="chat-container">
             <div id="chat-messages"></div>
             <div id="chat">
@@ -57,6 +59,19 @@
                 </button>
                 <button id="chat-send">Send</button>
             </div>
+        </div>
+        <div id="login-overlay" class="hidden">
+            <form id="login-form">
+                <h2>Authentication</h2>
+                <input
+                    id="login-key"
+                    type="password"
+                    placeholder="API Key"
+                    autocomplete="off"
+                />
+                <button type="submit">Login</button>
+                <div id="login-error"></div>
+            </form>
         </div>
         <script type="module" src="/static/js/app.js"></script>
     </body>

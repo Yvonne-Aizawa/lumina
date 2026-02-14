@@ -13,68 +13,84 @@ import { connectWebSocket } from "./websocket.js";
 import { initChat } from "./chat.js";
 import { initSettings } from "./settings.js";
 import { initWakeWord } from "./wakeword.js";
+import { authFetch, checkAuth, initAuth } from "./auth.js";
 
 let mixer = null;
 let currentVRM = null;
+
+// Init auth and gate app startup
+initAuth();
+const authed = await checkAuth();
 
 // Load VRM
 const loader = new GLTFLoader();
 loader.register((parser) => new VRMLoaderPlugin(parser));
 
-loader.load(
-  "./avatar.vrm",
-  async (gltf) => {
-    const vrm = gltf.userData.vrm;
-    currentVRM = vrm;
-    scene.add(vrm.scene);
+if (!authed) {
+  // Still start the render loop but don't load anything
+  const clock = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+  }
+  animate();
+  // Re-check after login (page reloads on successful login)
+} else {
+  loader.load(
+    "./avatar.vrm",
+    async (gltf) => {
+      const vrm = gltf.userData.vrm;
+      currentVRM = vrm;
+      scene.add(vrm.scene);
 
-    mixer = new THREE.AnimationMixer(vrm.scene);
-    setMixer(mixer);
+      mixer = new THREE.AnimationMixer(vrm.scene);
+      setMixer(mixer);
 
-    // Fetch animation list from server and preload all
-    try {
-      const res = await fetch("/api/animations");
-      const data = await res.json();
-      const animNames = data.animations || [];
+      // Fetch animation list from server and preload all
+      try {
+        const res = await authFetch("/api/animations");
+        const data = await res.json();
+        const animNames = data.animations || [];
 
-      for (const name of animNames) {
-        try {
-          const url = `./anims/${encodeURIComponent(name)}.fbx`;
-          const clip = await loadMixamoAnimation(url, vrm);
-          animationClips[name] = clip;
-          console.log("Loaded animation:", name);
-        } catch (e) {
-          console.warn("Failed to load animation:", name, e);
+        for (const name of animNames) {
+          try {
+            const url = `./anims/${encodeURIComponent(name)}.fbx`;
+            const clip = await loadMixamoAnimation(url, vrm);
+            animationClips[name] = clip;
+            console.log("Loaded animation:", name);
+          } catch (e) {
+            console.warn("Failed to load animation:", name, e);
+          }
         }
+
+        const loadedNames = Object.keys(animationClips);
+        const defaultAnim = loadedNames.includes("Idle")
+          ? "Idle"
+          : loadedNames[0];
+        if (defaultAnim) {
+          playAnimationByName(defaultAnim);
+        }
+        console.log(`Ready — ${loadedNames.length} animation(s) loaded`);
+      } catch (e) {
+        console.error("Failed to fetch animation list:", e);
       }
 
-      const loadedNames = Object.keys(animationClips);
-      const defaultAnim = loadedNames.includes("Idle")
-        ? "Idle"
-        : loadedNames[0];
-      if (defaultAnim) {
-        playAnimationByName(defaultAnim);
-      }
-      console.log(`Ready — ${loadedNames.length} animation(s) loaded`);
-    } catch (e) {
-      console.error("Failed to fetch animation list:", e);
-    }
+      // Connect WebSocket after animations are loaded
+      connectWebSocket();
+    },
+    undefined,
+    (error) => {
+      console.error("Error loading VRM:", error);
+    },
+  );
 
-    // Connect WebSocket after animations are loaded
-    connectWebSocket();
-  },
-  undefined,
-  (error) => {
-    console.error("Error loading VRM:", error);
-  },
-);
+  // Init UI
+  initChat();
+  initSettings();
 
-// Init UI
-initChat();
-initSettings();
-
-// Init wake word (async, non-blocking)
-initWakeWord().catch((e) => console.warn("Wake word init failed:", e));
+  // Init wake word (async, non-blocking)
+  initWakeWord().catch((e) => console.warn("Wake word init failed:", e));
+} // end auth gate
 
 // Resize handler
 window.addEventListener("resize", () => {

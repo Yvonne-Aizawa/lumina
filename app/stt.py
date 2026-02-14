@@ -17,6 +17,10 @@ stt_enabled: bool = False
 stt_language: str | None = None
 
 
+def is_enabled() -> bool:
+    return stt_enabled
+
+
 async def init_stt(config: STTConfig):
     """Load the Whisper STT model if enabled in config. Call once at startup."""
     global stt_model, stt_enabled, stt_language

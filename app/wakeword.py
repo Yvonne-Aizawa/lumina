@@ -20,6 +20,7 @@ _keyword: str = "hey_jarvis"
 _threshold: float = 0.5
 _cooldown_ms: int = 2000
 _enabled: bool = False
+_auto_start: bool = False
 
 # Per-client state: {client_id: {"paused": bool, "last_detection": float}}
 _clients: dict[int, dict] = {}
@@ -27,7 +28,7 @@ _clients: dict[int, dict] = {}
 
 async def init_wakeword(config: WakeWordConfig):
     """Load the openwakeword model at startup."""
-    global _model, _keyword, _enabled
+    global _model, _keyword, _enabled, _auto_start
 
     if not config.enabled:
         return
@@ -37,9 +38,9 @@ async def init_wakeword(config: WakeWordConfig):
     try:
         from openwakeword.model import Model as OWWModel
 
-        from .config import PROJECT_DIR
+        from .config import ASSETS_DIR
 
-        models_dir = PROJECT_DIR / "static" / "wakeword" / "models"
+        models_dir = ASSETS_DIR / "wakeword" / "models"
 
         # Resolve model file path
         if config.model_file:
@@ -57,12 +58,17 @@ async def init_wakeword(config: WakeWordConfig):
             f"models={list(_model.models.keys())})"
         )
         _enabled = True
+        _auto_start = config.auto_start
     except Exception:
         log.exception("Failed to load wake word model")
 
 
 def is_enabled() -> bool:
     return _enabled
+
+
+def is_auto_start() -> bool:
+    return _auto_start
 
 
 def get_keyword() -> str:

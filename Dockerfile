@@ -30,7 +30,7 @@ COPY app/ app/
 COPY static/ static/
 
 # Create mount-point directories so bind mounts work cleanly
-RUN mkdir -p assets/anims assets/models state/soul state/memories
+RUN mkdir -p assets/anims assets/models assets/wakeword/models state/soul state/memories
 
 EXPOSE 8000
 

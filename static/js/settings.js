@@ -4,6 +4,7 @@ import {
   clearMessages,
   loadMessages,
 } from "./chat.js";
+import { authFetch } from "./auth.js";
 
 const panel = document.getElementById("settings-panel");
 const overlay = document.getElementById("settings-overlay");
@@ -11,6 +12,7 @@ const openBtn = document.getElementById("settings-btn");
 const closeBtn = document.getElementById("settings-close");
 const toolcallCheckbox = document.getElementById("setting-toolcalls");
 const newChatBtn = document.getElementById("new-chat-btn");
+const hideUiBtn = document.getElementById("hide-ui-btn");
 const chatList = document.getElementById("chat-list");
 
 let currentSessionId = null;
@@ -43,7 +45,7 @@ function formatDate(isoString) {
 
 async function loadChatList() {
   try {
-    const res = await fetch("/api/chats");
+    const res = await authFetch("/api/chats");
     const data = await res.json();
     const sessions = data.sessions || [];
     currentSessionId = data.current || null;
@@ -77,7 +79,7 @@ async function loadChatList() {
 
 async function loadChat(id) {
   try {
-    const res = await fetch("/api/chats/load", {
+    const res = await authFetch("/api/chats/load", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -95,7 +97,7 @@ async function loadChat(id) {
 
 async function newChat() {
   try {
-    const res = await fetch("/api/chats/new", { method: "POST" });
+    const res = await authFetch("/api/chats/new", { method: "POST" });
     const data = await res.json();
     if (data.id) {
       clearMessages();
@@ -126,6 +128,18 @@ function initSettings() {
   });
 
   newChatBtn.addEventListener("click", newChat);
+
+  hideUiBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closePanel();
+    document.body.classList.add("ui-hidden");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!document.body.classList.contains("ui-hidden")) return;
+    if (e.target.closest("#heartbeat-indicator, #voice-indicator")) return;
+    document.body.classList.remove("ui-hidden");
+  });
 
   // Load initial chat list
   loadChatList();
