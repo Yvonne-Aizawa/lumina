@@ -15,19 +15,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# Mapping from keyword config names to model filenames
-MODEL_FILE_MAP = {
-    "alexa": "alexa_v0.1.onnx",
-    "hey_mycroft": "hey_mycroft_v0.1.onnx",
-    "hey_jarvis": "hey_jarvis_v0.1.onnx",
-    "hey_rhasspy": "hey_rhasspy_v0.1.onnx",
-    "timer": "timer_v0.1.onnx",
-    "weather": "weather_v0.1.onnx",
-    "hi_emma": "hi_emma_v0.1.onnx",
-    "hey_sofie": "hey_sofie_v0.1.onnx",
-    "lumina": "lumina.onnx",
-}
-
 _model = None
 _keyword: str = "hey_jarvis"
 _threshold: float = 0.5
@@ -57,8 +44,6 @@ async def init_wakeword(config: WakeWordConfig):
         # Resolve model file path
         if config.model_file:
             model_path = str(models_dir / config.model_file)
-        elif config.keyword in MODEL_FILE_MAP:
-            model_path = str(models_dir / MODEL_FILE_MAP[config.keyword])
         else:
             model_path = str(models_dir / f"{config.keyword}.onnx")
 

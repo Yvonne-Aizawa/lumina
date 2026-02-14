@@ -8,7 +8,7 @@ AI chatbot with a 3D VRM avatar. A FastAPI backend controls a Three.js browser f
 - Any OpenAI-compatible LLM backend
 - Text-to-speech via [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)
 - Speech-to-text via [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-- Browser-side wake word detection via [openWakeWord](https://github.com/dscripka/openWakeWord) (ONNX/WASM)
+- Server-side wake word detection via [openWakeWord](https://github.com/dscripka/openWakeWord)
 - Persistent memory and state system
 - Background heartbeat for proactive AI messages
 - Web search via [Brave Search API](https://brave.com/search/api/)
@@ -60,10 +60,10 @@ Copy the example below to `config.json` in the project root and adjust to your s
     "compute_type": "float16",      // "float16", "int8", etc.
     "language": "en"                // Force language (omit for auto-detect)
   },
-  "wakeword": {                     // Optional: browser-side wake word
+  "wakeword": {                     // Optional: server-side wake word detection
     "enabled": false,
-    "keyword": "hey_jarvis",        // Wake word name
-    "model_file": "hey_jarvis.onnx" // ONNX model filename (defaults to {keyword}.onnx)
+    "keyword": "hey_jarvis",        // Must match a model in static/wakeword/models/
+    "model_file": "custom.onnx"     // Optional: override model filename
   },
   "tts": {                          // Optional: GPT-SoVITS text-to-speech
     "enabled": false,
@@ -120,18 +120,17 @@ Runtime data (`config.json`, `assets/`, `state/`) is bind-mounted, not baked int
 |------|---------|----------|
 | [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) | Text-to-speech synthesis | Optional |
 | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Speech-to-text transcription | Optional |
-| [openWakeWord](https://github.com/dscripka/openWakeWord) | Browser-side wake word detection | Optional |
+| [openWakeWord](https://github.com/dscripka/openWakeWord) | Server-side wake word detection | Optional |
 | [Brave Search API](https://brave.com/search/api/) | Web search tool for the LLM | Optional |
 | Any OpenAI-compatible API | LLM backend (e.g. LM Studio, ollama, OpenAI) | **Required** |
 
-GPT-SoVITS must be running separately and accessible at the URL configured in `tts.base_url`. faster-whisper runs in-process and requires NVIDIA CUDA libraries for GPU acceleration. openWakeWord runs entirely in the browser via ONNX Runtime WebAssembly.
+GPT-SoVITS must be running separately and accessible at the URL configured in `tts.base_url`. faster-whisper runs in-process and requires NVIDIA CUDA libraries for GPU acceleration. openWakeWord runs server-side; the browser streams mic audio over WebSocket for detection.
 
 ## Adding Wake Word Models
 
 1. Drop `.onnx` keyword model files into `static/wakeword/models/`
-2. Set `wakeword.keyword` and optionally `wakeword.model_file` in `config.json`
-
-If `model_file` is omitted, it defaults to `{keyword}.onnx`.
+2. Set `wakeword.keyword` in `config.json` — the model file defaults to `{keyword}.onnx`
+3. Optionally set `wakeword.model_file` to override the filename
 
 # get assets
 ### vrm models.

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI chatbot with a 3D VRM avatar. FastAPI backend controls a Three.js browser frontend via WebSocket. The LLM can trigger character animations, manage persistent memories, and use external tools via MCP servers. Features include TTS (GPT-SoVITS), STT (faster-whisper), browser-side wake word detection (openWakeWord via ONNX), and a background heartbeat system for proactive AI messages.
+AI chatbot with a 3D VRM avatar. FastAPI backend controls a Three.js browser frontend via WebSocket. The LLM can trigger character animations, manage persistent memories, and use external tools via MCP servers. Features include TTS (GPT-SoVITS), STT (faster-whisper), server-side wake word detection (openwakeword), and a background heartbeat system for proactive AI messages.
 
 ## Running the Project
 
@@ -33,7 +33,9 @@ No tests or linting are configured.
 
 **`app/tts.py`** — TTS client. `init_tts(config)` loads settings, `synthesize_and_broadcast(text)` calls GPT-SoVITS and broadcasts base64 audio via WebSocket.
 
-**`app/stt.py`** — STT model and wake word config. `init_stt(config)` loads faster-whisper in a thread executor (with NVIDIA CUDA libraries pre-loaded via `ctypes`). `init_wakeword(config)` loads wake word settings. `transcribe(audio_bytes)` runs transcription in a thread executor.
+**`app/stt.py`** — STT model. `init_stt(config)` loads faster-whisper in a thread executor (with NVIDIA CUDA libraries pre-loaded via `ctypes`). `transcribe(audio_bytes)` runs transcription in a thread executor.
+
+**`app/wakeword.py`** — Server-side wake word detection using openwakeword. `init_wakeword(config)` loads the ONNX keyword model at startup. Browser streams 16kHz Int16 PCM audio over WebSocket binary frames; `process_audio(client_id, data)` runs detection and returns matches. Per-client pause/resume state for muting during TTS playback.
 
 **`app/heartbeat.py`** — Background heartbeat system. `start_heartbeat(config, chat_handler)` spawns the async loop. Tracks user idle time via `record_user_interaction()`. Pauses until user responds before sending another heartbeat.
 
@@ -44,13 +46,11 @@ No tests or linting are configured.
 **`static/`** — Frontend ES modules served via FastAPI's StaticFiles mount:
 - `app.js` — Entry point. Loads VRM, preloads animations, starts render loop, initializes chat and wake word.
 - `animations.js` — Mixamo FBX-to-VRM retargeting.
-- `websocket.js` — Auto-reconnecting WebSocket for animation playback, heartbeat, TTS audio playback. Pauses/resumes wake word during audio. Background tabs skip audio playback (`document.hidden`).
+- `websocket.js` — Auto-reconnecting WebSocket for animation playback, heartbeat, TTS audio playback, and wake word detection events. Exports `getWebSocket()` for the wakeword module to send binary audio. Pauses/resumes wake word during audio. Background tabs skip audio playback (`document.hidden`).
 - `chat.js` — Chat UI, push-to-talk mic recording, sends audio to `/api/transcribe`. `sendMessage()` is exported for use by other modules (wake word). Assistant messages are rendered as markdown via `marked.js` (CDN).
-- `wakeword.js` — Browser-side wake word detection using `WakeWordEngine` (ONNX/WASM). On detection: records speech via MediaRecorder, auto-stops on silence (VAD speech-end), transcribes via `/api/transcribe`, sends through chat. Pauses during TTS playback to avoid self-triggering. Keyword is configurable from server config.
+- `wakeword.js` — Streams mic audio to server for wake word detection. AudioWorklet resamples to 16kHz Int16 PCM and sends binary frames over WebSocket. On server detection event: records speech via MediaRecorder, transcribes via `/api/transcribe`, sends through chat. Sends pause/resume control messages during TTS playback.
 
-**`static/wakeword/`** — Vendored openWakeWord assets:
-- `WakeWordEngine.js` — Modified from [openwakeword_wasm](https://github.com/dnavarrom/openwakeword_wasm). Uses `globalThis.ort` (loaded via CDN script tag, not ES import). AudioWorklet downsamples from native sample rate to 16kHz for cross-browser compatibility.
-- `models/` — ONNX model files (melspectrogram, embedding, VAD, keyword models).
+**`static/wakeword/models/`** — ONNX keyword model files used by server-side openwakeword.
 
 ## Key Data Flow
 
@@ -66,8 +66,10 @@ Browser chat input → POST /api/chat → ChatHandler.send_message()
 ### Voice Input Flow
 
 ```
-Wake word detected in browser (ONNX/WASM) → MediaRecorder starts
-  → VAD speech-end → stop recording → POST /api/transcribe
+Browser AudioWorklet → 16kHz Int16 PCM → WebSocket binary frames
+  → Server openwakeword detects keyword → WebSocket JSON notification
+  → Browser MediaRecorder starts recording speech
+  → silence timeout → stop recording → POST /api/transcribe
   → faster-whisper transcribes in-process → text returned
   → auto-sent through normal chat flow
 ```
@@ -105,9 +107,10 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
     "compute_type": "float16",      // "float16", "int8", etc.
     "language": "en"                // Force language (omit for auto-detect)
   },
-  "wakeword": {                     // Optional: browser-side wake word
+  "wakeword": {                     // Optional: server-side wake word detection
     "enabled": false,
-    "keyword": "hey_jarvis"         // Must match a model in static/wakeword/models/
+    "keyword": "hey_jarvis",        // Must match a model in static/wakeword/models/
+    "model_file": "custom.onnx"     // Optional: override model filename
   },
   "tts": {                          // Optional: GPT-SoVITS text-to-speech
     "enabled": false,
@@ -161,7 +164,7 @@ Drop Mixamo FBX files (exported as **FBX Binary**, **Without Skin**) into `asset
 
 ## Adding Wake Word Models
 
-Drop `.onnx` keyword model files into `static/wakeword/models/` and add the keyword-to-filename mapping in `WakeWordEngine.js`'s `MODEL_FILE_MAP`. Set `wakeword.keyword` in `config.json` to match.
+Drop `.onnx` keyword model files into `static/wakeword/models/` and set `wakeword.keyword` in `config.json` — the model file defaults to `{keyword}.onnx`. Optionally set `wakeword.model_file` to override the filename.
 
 ## Animation Retargeting
 
@@ -173,5 +176,5 @@ Mixamo FBX animations are retargeted to VRM in the browser. `loadMixamoAnimation
 
 ## Dependencies
 
-- **Python:** fastapi, uvicorn[standard], openai, mcp, httpx, faster-whisper, nvidia-cublas-cu12, brave-search-python-client, psutil
-- **Browser (CDN):** three.js 0.162.0, @pixiv/three-vrm 3.3.2, onnxruntime-web 1.21.0, marked.js
+- **Python:** fastapi, uvicorn[standard], openai, mcp, httpx, faster-whisper, nvidia-cublas-cu12, brave-search-python-client, psutil, openwakeword
+- **Browser (CDN):** three.js 0.162.0, @pixiv/three-vrm 3.3.2, marked.js
