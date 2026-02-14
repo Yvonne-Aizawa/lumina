@@ -1,110 +1,97 @@
-import { WakeWordEngine } from "/static/wakeword/WakeWordEngine.js";
 import { sendMessage, addMessage } from "./chat.js";
+import { getWebSocket } from "./websocket.js";
 
-let engine = null;
 let active = false;
 let recording = false;
 let paused = false;
 let mediaRecorder = null;
 let audioChunks = [];
 let silenceTimer = null;
-let loaded = false;
 let keyword = "hey_jarvis";
-let modelFile = null;
+
+let audioContext = null;
+let workletNode = null;
+let mediaStream = null;
 
 const SILENCE_TIMEOUT_MS = 10000;
+const SPEECH_END_DELAY_MS = 1000;
+const TARGET_SAMPLE_RATE = 16000;
+const FRAME_SIZE = 1280;
+
+// AudioWorklet processor code: resamples to 16kHz and outputs Int16 PCM chunks
+const AUDIO_PROCESSOR = `
+class AudioProcessor extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    const targetRate = (options.processorOptions && options.processorOptions.targetSampleRate) || 16000;
+    this._resampleRatio = sampleRate / targetRate;
+    this._frameSize = (options.processorOptions && options.processorOptions.frameSize) || 1280;
+    this._buffer = new Float32Array(this._frameSize);
+    this._pos = 0;
+    this._resamplePos = 0;
+    this._inputBuf = [];
+  }
+
+  process(inputs) {
+    const input = inputs[0][0];
+    if (!input) return true;
+
+    for (let i = 0; i < input.length; i++) {
+      this._inputBuf.push(input[i]);
+    }
+
+    while (this._resamplePos < this._inputBuf.length - 1) {
+      const idx = Math.floor(this._resamplePos);
+      const frac = this._resamplePos - idx;
+      const sample = this._inputBuf[idx] * (1 - frac) + this._inputBuf[idx + 1] * frac;
+      this._buffer[this._pos++] = sample;
+      this._resamplePos += this._resampleRatio;
+
+      if (this._pos === this._frameSize) {
+        // Convert float32 to int16
+        const int16 = new Int16Array(this._frameSize);
+        for (let j = 0; j < this._frameSize; j++) {
+          const s = Math.max(-1, Math.min(1, this._buffer[j]));
+          int16[j] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        this.port.postMessage(int16.buffer, [int16.buffer]);
+        this._buffer = new Float32Array(this._frameSize);
+        this._pos = 0;
+      }
+    }
+
+    const consumed = Math.floor(this._resamplePos);
+    if (consumed > 0) {
+      this._inputBuf = this._inputBuf.slice(consumed);
+      this._resamplePos -= consumed;
+    }
+
+    return true;
+  }
+}
+registerProcessor('audio-processor', AudioProcessor);
+`;
 
 async function initWakeWord() {
   const btn = document.getElementById("wakeword-toggle");
 
-  // Check if STT and wakeword are enabled
   try {
     const res = await fetch("/api/stt/status");
     const data = await res.json();
-    if (!data.wakeword_enabled) {
-      return;
-    }
-    if (!data.enabled) {
-      console.warn(
-        "Wake word is enabled but STT is disabled. Enable STT in config to use wake word.",
-      );
-      return;
-    }
+    if (!data.wakeword_enabled) return;
     if (data.wakeword) keyword = data.wakeword;
-    if (data.wakeword_model_file) modelFile = data.wakeword_model_file;
   } catch {
     return;
   }
 
   btn.classList.remove("hidden");
-
   btn.addEventListener("click", toggleWakeWord);
-}
-
-async function loadEngine() {
-  if (loaded) return;
-  const btn = document.getElementById("wakeword-toggle");
-  btn.textContent = "...";
-
-  // Configure ONNX Runtime WASM paths to match the CDN script
-  if (globalThis.ort) {
-    globalThis.ort.env.wasm.wasmPaths =
-      "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/";
-  }
-
-  const engineOpts = {
-    keywords: [keyword],
-    baseAssetUrl: "/static/wakeword/models",
-    detectionThreshold: 0.5,
-    cooldownMs: 3000,
-  };
-  if (modelFile) {
-    engineOpts.modelFiles = { [keyword]: modelFile };
-  }
-  engine = new WakeWordEngine(engineOpts);
-
-  await engine.load();
-  loaded = true;
-
-  engine.on("detect", ({ keyword, score }) => {
-    console.log(
-      `Wake word detected: ${keyword} (${score.toFixed(2)}) recording=${recording} paused=${paused}`,
-    );
-    if (!recording && !paused) {
-      const btn = document.getElementById("wakeword-toggle");
-      btn.classList.add("detected");
-      setTimeout(() => {
-        btn.classList.remove("detected");
-        startRecording();
-      }, 100);
-    }
-  });
-
-  engine.on("speech-end", () => {
-    if (recording) {
-      clearTimeout(silenceTimer);
-      silenceTimer = setTimeout(stopRecording, 1000);
-    }
-  });
-
-  engine.on("speech-start", () => {
-    if (recording && silenceTimer) {
-      clearTimeout(silenceTimer);
-      silenceTimer = null;
-    }
-  });
-
-  engine.on("error", (err) => {
-    console.error("WakeWordEngine error:", err);
-  });
-
-  btn.textContent = "Wake";
 }
 
 async function toggleWakeWord() {
   const btn = document.getElementById("wakeword-toggle");
   if (active) {
-    await engine.stop();
+    stopStreaming();
     active = false;
     paused = false;
     btn.classList.remove("active");
@@ -112,8 +99,8 @@ async function toggleWakeWord() {
     if (recording) stopRecording();
   } else {
     try {
-      await loadEngine();
-      await engine.start();
+      btn.textContent = "...";
+      await startStreaming();
       active = true;
       paused = false;
       btn.classList.add("active");
@@ -126,53 +113,117 @@ async function toggleWakeWord() {
   }
 }
 
+async function startStreaming() {
+  mediaStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  });
+
+  audioContext = new AudioContext();
+  const source = audioContext.createMediaStreamSource(mediaStream);
+
+  const blob = new Blob([AUDIO_PROCESSOR], { type: "application/javascript" });
+  const workletURL = URL.createObjectURL(blob);
+  await audioContext.audioWorklet.addModule(workletURL);
+  URL.revokeObjectURL(workletURL);
+
+  workletNode = new AudioWorkletNode(audioContext, "audio-processor", {
+    processorOptions: {
+      targetSampleRate: TARGET_SAMPLE_RATE,
+      frameSize: FRAME_SIZE,
+    },
+  });
+
+  workletNode.port.onmessage = (event) => {
+    const ws = getWebSocket();
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (paused || recording) return;
+    ws.send(event.data);
+  };
+
+  source.connect(workletNode);
+  workletNode.connect(audioContext.destination);
+  console.log("[wakeword] Streaming started", {
+    sampleRate: audioContext.sampleRate,
+    targetRate: TARGET_SAMPLE_RATE,
+  });
+}
+
+function stopStreaming() {
+  if (workletNode) {
+    workletNode.port.onmessage = null;
+    workletNode.disconnect();
+    workletNode = null;
+  }
+  if (audioContext && audioContext.state !== "closed") {
+    audioContext.close();
+  }
+  audioContext = null;
+  if (mediaStream) {
+    mediaStream.getTracks().forEach((t) => t.stop());
+    mediaStream = null;
+  }
+  console.log("[wakeword] Streaming stopped");
+}
+
+/** Called by websocket.js when server sends a detection event */
+function onWakeWordDetected(kw, score) {
+  console.log(`[wakeword] Detected: ${kw} (${score.toFixed(2)})`);
+  if (recording || paused || !active) return;
+  const btn = document.getElementById("wakeword-toggle");
+  btn.classList.add("detected");
+  setTimeout(() => {
+    btn.classList.remove("detected");
+    startRecording();
+  }, 100);
+}
+
 /** Pause wake word detection (e.g. while AI audio is playing) */
 function pauseWakeWord() {
   if (!active) return;
   paused = true;
+  const ws = getWebSocket();
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ action: "wakeword_pause" }));
+  }
   const btn = document.getElementById("wakeword-toggle");
   btn.classList.add("paused");
-  if (engine) engine.setActiveKeywords([]);
 }
 
 /** Resume wake word detection after pause */
 function resumeWakeWord() {
   if (!active) return;
   paused = false;
+  const ws = getWebSocket();
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ action: "wakeword_resume" }));
+  }
   const btn = document.getElementById("wakeword-toggle");
   btn.classList.remove("paused");
-  if (engine) engine.setActiveKeywords([keyword]);
 }
 
 function startRecording() {
   if (recording) return;
-  recording = true;
-  // Suppress wake word detection during recording
-  if (engine) engine.setActiveKeywords([]);
 
-  // Reuse the engine's existing mic stream to avoid opening a second one,
-  // which can kill the engine's stream on some browsers when closed.
-  const stream = engine && engine._mediaStream;
-  if (!stream) {
-    console.warn("No engine media stream available for recording");
-    recording = false;
-    reactivate();
+  // Reuse the existing mic stream
+  if (!mediaStream || !mediaStream.active) {
+    console.error("[wakeword] No active mic stream for recording");
     return;
   }
 
+  recording = true;
   audioChunks = [];
-  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder = new MediaRecorder(mediaStream);
   mediaRecorder.ondataavailable = (e) => {
     if (e.data.size > 0) audioChunks.push(e.data);
   };
   mediaRecorder.onstop = async () => {
-    // Do NOT stop stream tracks — the engine still needs them
     recording = false;
 
-    if (audioChunks.length === 0) {
-      reactivate();
-      return;
-    }
+    if (audioChunks.length === 0) return;
 
     const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
 
@@ -192,16 +243,8 @@ function startRecording() {
     } catch {
       addMessage("assistant", "STT request failed.");
     }
-
-    // Re-enable wake word detection now that send is complete.
-    // If TTS audio is playing, the websocket handler will have
-    // called pauseWakeWord() and will resumeWakeWord() when done,
-    // so reactivate() will be a no-op in that case (paused=true).
-    reactivate();
   };
   mediaRecorder.start();
-
-  // Safety timeout — stop after silence
   silenceTimer = setTimeout(stopRecording, SILENCE_TIMEOUT_MS);
 }
 
@@ -212,15 +255,7 @@ function stopRecording() {
     mediaRecorder.stop();
   } else {
     recording = false;
-    reactivate();
   }
 }
 
-/** Re-enable wake word keyword after recording ends */
-function reactivate() {
-  if (active && engine && !paused) {
-    engine.setActiveKeywords([keyword]);
-  }
-}
-
-export { initWakeWord, pauseWakeWord, resumeWakeWord };
+export { initWakeWord, pauseWakeWord, resumeWakeWord, onWakeWordDetected };

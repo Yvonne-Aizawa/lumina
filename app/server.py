@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import wakeword
 from .broadcast import (
     broadcast,
     connected_clients,
@@ -21,16 +22,7 @@ from .chat import ChatHandler
 from .config import ANIMS_DIR, MODELS_DIR, PROJECT_DIR, Config, load_config
 from .heartbeat import record_user_interaction, start_heartbeat
 from .mcp_manager import MCPManager
-from .stt import (
-    init_stt,
-    init_wakeword,
-    stt_enabled,
-    stt_model,
-    transcribe,
-    wakeword_enabled,
-    wakeword_keyword,
-    wakeword_model_file,
-)
+from .stt import init_stt, stt_enabled, stt_model, transcribe
 from .tts import init_tts, synthesize_and_broadcast
 
 logging.basicConfig(level=logging.INFO)
@@ -76,7 +68,7 @@ async def lifespan(app: FastAPI):
     # Initialise subsystems
     init_tts(config.tts)
     await init_stt(config.stt)
-    init_wakeword(config.wakeword)
+    await wakeword.init_wakeword(config.wakeword)
     heartbeat_task = start_heartbeat(config.heartbeat, chat_handler)
 
     yield
@@ -177,18 +169,10 @@ async def api_chats_load(req: ChatLoadRequest):
 
 @app.get("/api/stt/status")
 async def api_stt_status():
-    from .stt import (
-        stt_enabled,
-        wakeword_enabled,
-        wakeword_keyword,
-        wakeword_model_file,
-    )
-
     return {
         "enabled": stt_enabled,
-        "wakeword": wakeword_keyword,
-        "wakeword_enabled": wakeword_enabled,
-        "wakeword_model_file": wakeword_model_file,
+        "wakeword": wakeword.get_keyword(),
+        "wakeword_enabled": wakeword.is_enabled(),
     }
 
 
@@ -211,11 +195,35 @@ async def api_transcribe(file: UploadFile):
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     connected_clients.append(ws)
+    client_id = id(ws)
+    wakeword.register_client(client_id)
     try:
         while True:
-            data = await ws.receive_text()
+            msg = await ws.receive()
+            if msg["type"] == "websocket.disconnect":
+                break
+            if msg.get("bytes"):
+                result = wakeword.process_audio(client_id, msg["bytes"])
+                if result:
+                    await ws.send_json({"action": "wakeword_detected", **result})
+            elif msg.get("text"):
+                import json as _json
+
+                try:
+                    data = _json.loads(msg["text"])
+                    action = data.get("action")
+                    if action == "wakeword_pause":
+                        wakeword.pause(client_id)
+                    elif action == "wakeword_resume":
+                        wakeword.resume(client_id)
+                except (ValueError, AttributeError):
+                    pass
     except WebSocketDisconnect:
-        connected_clients.remove(ws)
+        pass
+    finally:
+        wakeword.remove_client(client_id)
+        if ws in connected_clients:
+            connected_clients.remove(ws)
 
 
 # Serve VRM model file

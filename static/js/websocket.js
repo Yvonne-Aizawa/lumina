@@ -1,13 +1,22 @@
 import { playAnimationByName } from "./animations.js";
 import { addMessage, addToolCall } from "./chat.js";
-import { pauseWakeWord, resumeWakeWord } from "./wakeword.js";
+import {
+  pauseWakeWord,
+  resumeWakeWord,
+  onWakeWordDetected,
+} from "./wakeword.js";
 
 const heartbeatIndicator = document.getElementById("heartbeat-indicator");
 let currentAudio = null;
+let ws = null;
+
+function getWebSocket() {
+  return ws;
+}
 
 function connectWebSocket() {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new WebSocket(`${protocol}//${location.host}/ws`);
+  ws = new WebSocket(`${protocol}//${location.host}/ws`);
 
   ws.onopen = () => {
     console.log("WebSocket connected");
@@ -22,6 +31,8 @@ function connectWebSocket() {
         addMessage("assistant", msg.content);
       } else if (msg.action === "tool_call" && msg.name) {
         addToolCall(msg.name, msg.arguments);
+      } else if (msg.action === "wakeword_detected") {
+        onWakeWordDetected(msg.keyword, msg.score);
       } else if (msg.action === "audio" && msg.data) {
         // Stop any currently playing audio to prevent overlapping
         if (currentAudio) {
@@ -59,6 +70,7 @@ function connectWebSocket() {
 
   ws.onclose = () => {
     console.log("WebSocket disconnected, reconnecting in 2s...");
+    ws = null;
     setTimeout(connectWebSocket, 2000);
   };
 
@@ -68,4 +80,4 @@ function connectWebSocket() {
   };
 }
 
-export { connectWebSocket };
+export { connectWebSocket, getWebSocket };

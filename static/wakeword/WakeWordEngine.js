@@ -1,4 +1,14 @@
-const ort = globalThis.ort;
+function getOrt() {
+  return globalThis.ort;
+}
+const ort = new Proxy(
+  {},
+  {
+    get(_, prop) {
+      return getOrt()[prop];
+    },
+  },
+);
 
 export const MODEL_FILE_MAP = {
   alexa: "alexa_v0.1.onnx",
@@ -18,29 +28,48 @@ class AudioProcessor extends AudioWorkletProcessor {
     _buffer = new Float32Array(this.bufferSize);
     _pos = 0;
     _resampleRatio = 1;
-    _resampleAccum = 0;
+    _resamplePos = 0; // fractional position in input stream
 
     constructor(options) {
         super();
         const targetRate = (options.processorOptions && options.processorOptions.targetSampleRate) || 16000;
         this._resampleRatio = sampleRate / targetRate;
+        // Ring buffer for input samples (need previous sample for interpolation)
+        this._prevSample = 0;
+        this._inputBuf = [];
     }
 
     process(inputs) {
         const input = inputs[0][0];
-        if (input) {
-            for (let i = 0; i < input.length; i++) {
-                this._resampleAccum += 1;
-                if (this._resampleAccum >= this._resampleRatio) {
-                    this._resampleAccum -= this._resampleRatio;
-                    this._buffer[this._pos++] = input[i];
-                    if (this._pos === this.bufferSize) {
-                        this.port.postMessage(this._buffer);
-                        this._pos = 0;
-                    }
-                }
+        if (!input) return true;
+
+        // Accumulate input samples
+        for (let i = 0; i < input.length; i++) {
+            this._inputBuf.push(input[i]);
+        }
+
+        // Resample with linear interpolation
+        while (this._resamplePos < this._inputBuf.length - 1) {
+            const idx = Math.floor(this._resamplePos);
+            const frac = this._resamplePos - idx;
+            const sample = this._inputBuf[idx] * (1 - frac) + this._inputBuf[idx + 1] * frac;
+            this._buffer[this._pos++] = sample;
+            this._resamplePos += this._resampleRatio;
+
+            if (this._pos === this.bufferSize) {
+                this.port.postMessage(this._buffer);
+                this._buffer = new Float32Array(this.bufferSize);
+                this._pos = 0;
             }
         }
+
+        // Remove consumed samples, keep last for continuity
+        const consumed = Math.floor(this._resamplePos);
+        if (consumed > 0) {
+            this._inputBuf = this._inputBuf.slice(consumed);
+            this._resamplePos -= consumed;
+        }
+
         return true;
     }
 }
@@ -80,7 +109,7 @@ export class WakeWordEngine {
     cooldownMs = 2000,
     executionProviders = ["wasm"],
     embeddingWindowSize = 16,
-    debug = false,
+    debug = true,
   } = {}) {
     this.config = {
       keywords,
@@ -197,8 +226,15 @@ export class WakeWordEngine {
     this._workletNode = new AudioWorkletNode(
       this._audioContext,
       "audio-processor",
-      { processorOptions: { targetSampleRate: this.config.sampleRate } },
+      {
+        processorOptions: {
+          targetSampleRate: this.config.sampleRate,
+        },
+      },
     );
+    this._debug("AudioContext created", {
+      sampleRate: this._audioContext.sampleRate,
+    });
 
     this._workletNode.port.onmessage = (event) => {
       const chunk = event.data;
@@ -334,21 +370,6 @@ export class WakeWordEngine {
   }
 
   async _processChunk(chunk, { emitEvents = true } = {}) {
-    if (this.config.debug) {
-      let peak = 0;
-      let sumSquares = 0;
-      for (let i = 0; i < chunk.length; i++) {
-        const sample = chunk[i];
-        sumSquares += sample * sample;
-        const abs = Math.abs(sample);
-        if (abs > peak) peak = abs;
-      }
-      const rms = Math.sqrt(sumSquares / chunk.length);
-      this._debug("Chunk received", {
-        rms: Number(rms.toFixed(4)),
-        peak: Number(peak.toFixed(4)),
-      });
-    }
     const vadTriggered = await this._runVad(chunk);
     if (vadTriggered) {
       if (!this._isSpeechActive && emitEvents)
@@ -376,8 +397,18 @@ export class WakeWordEngine {
         h: this._vadState.h,
         c: this._vadState.c,
       });
-      this._vadState.h = res.hn;
-      this._vadState.c = res.cn;
+      // ONNX Runtime reuses output buffers — copy VAD state tensors
+      const vadShape = [2, 1, 64];
+      this._vadState.h = new ort.Tensor(
+        "float32",
+        new Float32Array(res.hn.data),
+        vadShape,
+      );
+      this._vadState.c = new ort.Tensor(
+        "float32",
+        new Float32Array(res.cn.data),
+        vadShape,
+      );
       const confidence = res.output.data[0];
       this._debug("VAD result", { confidence: Number(confidence.toFixed(3)) });
       return confidence > 0.5;
@@ -395,15 +426,14 @@ export class WakeWordEngine {
     const melspecResults = await this._melspecModel.run({
       [this._melspecModel.inputNames[0]]: melspecTensor,
     });
-    const newMelData = melspecResults[this._melspecModel.outputNames[0]].data;
-
-    for (let j = 0; j < newMelData.length; j++) {
-      newMelData[j] = newMelData[j] / 10.0 + 2.0;
+    // ONNX Runtime reuses output buffers — copy before transforming
+    const rawMelData = melspecResults[this._melspecModel.outputNames[0]].data;
+    const newMelData = new Float32Array(rawMelData.length);
+    for (let j = 0; j < rawMelData.length; j++) {
+      newMelData[j] = rawMelData[j] / 10.0 + 2.0;
     }
     for (let j = 0; j < 5; j++) {
-      this._melBuffer.push(
-        new Float32Array(newMelData.subarray(j * 32, (j + 1) * 32)),
-      );
+      this._melBuffer.push(newMelData.slice(j * 32, (j + 1) * 32));
     }
 
     while (this._melBuffer.length >= 76) {
@@ -448,44 +478,39 @@ export class WakeWordEngine {
         const score = results[keywordModel.session.outputNames[0]].data[0];
         keywordModel.scores.shift();
         keywordModel.scores.push(score);
+        const scoreNum = Number(score);
         this._debug("Keyword score", {
           keyword: name,
-          score: Number(score.toFixed(3)),
+          score: Number(scoreNum.toFixed(3)),
           windowSize: keywordModel.windowSize,
         });
 
         const keywordActive = this._activeKeywords.has(name);
-        if (score > this.config.detectionThreshold) {
-          this._debug("Detection check", {
+        if (scoreNum > this.config.detectionThreshold) {
+          this._debug("ABOVE THRESHOLD", {
             keyword: name,
-            score: Number(score.toFixed(3)),
+            score: scoreNum,
+            emitEvents,
             keywordActive,
-            isSpeechActive,
             coolingDown: this._isDetectionCoolingDown,
           });
         }
         if (
           emitEvents &&
           keywordActive &&
-          score > this.config.detectionThreshold &&
-          isSpeechActive &&
+          scoreNum > this.config.detectionThreshold &&
           !this._isDetectionCoolingDown
         ) {
           this._isDetectionCoolingDown = true;
-          this._debug("Detection emitted", { keyword: name, score });
+          this._debug("Detection emitted", { keyword: name, score: scoreNum });
           this._emitter.emit("detect", {
             keyword: name,
-            score,
+            score: scoreNum,
             at: performance.now(),
           });
           setTimeout(() => {
             this._isDetectionCoolingDown = false;
           }, this.config.cooldownMs);
-        } else if (emitEvents && !keywordActive) {
-          this._debug("Detection suppressed (inactive keyword)", {
-            keyword: name,
-            score,
-          });
         }
       }
       this._melBuffer.splice(0, 8);

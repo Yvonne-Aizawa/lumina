@@ -8,16 +8,13 @@ import tempfile
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .config import STTConfig, WakeWordConfig
+    from .config import STTConfig
 
 log = logging.getLogger(__name__)
 
 stt_model = None
 stt_enabled: bool = False
 stt_language: str | None = None
-wakeword_enabled: bool = False
-wakeword_keyword: str = "hey_jarvis"
-wakeword_model_file: str | None = None
 
 
 async def init_stt(config: STTConfig):
@@ -68,18 +65,6 @@ async def init_stt(config: STTConfig):
         log.info(f"STT model loaded (language={stt_language or 'auto'})")
     except Exception:
         log.exception("Failed to load STT model")
-
-
-def init_wakeword(config: WakeWordConfig):
-    """Load wake word settings from config. Call once at startup."""
-    global wakeword_enabled, wakeword_keyword, wakeword_model_file
-
-    if config.enabled:
-        wakeword_enabled = True
-        log.info("Wake word enabled")
-    if config.keyword:
-        wakeword_keyword = config.keyword
-    wakeword_model_file = config.model_file
 
 
 # Common Whisper hallucinations on silence/quiet audio (from YouTube training data)
