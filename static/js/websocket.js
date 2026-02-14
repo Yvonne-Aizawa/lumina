@@ -1,3 +1,4 @@
+import { getToken } from "./auth.js";
 import { playAnimationByName } from "./animations.js";
 import { addMessage, addToolCall } from "./chat.js";
 import {
@@ -18,7 +19,9 @@ function getWebSocket() {
 
 function connectWebSocket() {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  ws = new WebSocket(`${protocol}//${location.host}/ws`);
+  const token = getToken();
+  const query = token ? `?token=${encodeURIComponent(token)}` : "";
+  ws = new WebSocket(`${protocol}//${location.host}/ws${query}`);
 
   ws.onopen = () => {
     console.log("WebSocket connected");

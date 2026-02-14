@@ -59,6 +59,12 @@ class BraveConfig:
 
 
 @dataclass
+class AuthConfig:
+    enabled: bool = False
+    api_key: str = ""
+
+
+@dataclass
 class BashConfig:
     enabled: bool = False
 
@@ -71,6 +77,7 @@ class Config:
     tts: TTSConfig = field(default_factory=TTSConfig)
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
     brave: BraveConfig = field(default_factory=BraveConfig)
+    auth: AuthConfig = field(default_factory=AuthConfig)
     bash: BashConfig = field(default_factory=BashConfig)
     mcp_servers: dict[str, dict] = field(default_factory=dict)
 
@@ -86,6 +93,7 @@ def load_config() -> Config:
         tts=TTSConfig(**raw.get("tts", {})),
         heartbeat=HeartbeatConfig(**raw.get("heartbeat", {})),
         brave=BraveConfig(**raw.get("brave", {})),
+        auth=AuthConfig(**raw.get("auth", {})),
         bash=BashConfig(**raw.get("bash", {})),
         mcp_servers=raw.get("mcp_servers") or raw.get("mcpServers") or {},
     )

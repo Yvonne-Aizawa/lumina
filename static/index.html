@@ -60,6 +60,19 @@
                 <button id="chat-send">Send</button>
             </div>
         </div>
+        <div id="login-overlay" class="hidden">
+            <form id="login-form">
+                <h2>Authentication</h2>
+                <input
+                    id="login-key"
+                    type="password"
+                    placeholder="API Key"
+                    autocomplete="off"
+                />
+                <button type="submit">Login</button>
+                <div id="login-error"></div>
+            </form>
+        </div>
         <script type="module" src="/static/js/app.js"></script>
     </body>
 </html>

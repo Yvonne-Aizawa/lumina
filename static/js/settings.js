@@ -4,6 +4,7 @@ import {
   clearMessages,
   loadMessages,
 } from "./chat.js";
+import { authFetch } from "./auth.js";
 
 const panel = document.getElementById("settings-panel");
 const overlay = document.getElementById("settings-overlay");
@@ -44,7 +45,7 @@ function formatDate(isoString) {
 
 async function loadChatList() {
   try {
-    const res = await fetch("/api/chats");
+    const res = await authFetch("/api/chats");
     const data = await res.json();
     const sessions = data.sessions || [];
     currentSessionId = data.current || null;
@@ -78,7 +79,7 @@ async function loadChatList() {
 
 async function loadChat(id) {
   try {
-    const res = await fetch("/api/chats/load", {
+    const res = await authFetch("/api/chats/load", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -96,7 +97,7 @@ async function loadChat(id) {
 
 async function newChat() {
   try {
-    const res = await fetch("/api/chats/new", { method: "POST" });
+    const res = await authFetch("/api/chats/new", { method: "POST" });
     const data = await res.json();
     if (data.id) {
       clearMessages();

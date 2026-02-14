@@ -1,3 +1,5 @@
+import { authFetch } from "./auth.js";
+
 const chatMessages = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
 const chatSend = document.getElementById("chat-send");
@@ -43,7 +45,7 @@ async function sendMessage(text) {
   addMessage("user", text);
 
   try {
-    const res = await fetch("/api/chat", {
+    const res = await authFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: text }),
@@ -100,7 +102,7 @@ function initChat() {
   });
 
   // --- STT mic button ---
-  fetch("/api/stt/status")
+  authFetch("/api/stt/status")
     .then((r) => r.json())
     .then((data) => {
       if (data.enabled) chatMic.classList.remove("hidden");
@@ -130,7 +132,7 @@ function initChat() {
           try {
             const form = new FormData();
             form.append("file", blob, "recording.webm");
-            const res = await fetch("/api/transcribe", {
+            const res = await authFetch("/api/transcribe", {
               method: "POST",
               body: form,
             });

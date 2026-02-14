@@ -1,5 +1,6 @@
 import { sendMessage, addMessage } from "./chat.js";
 import { getWebSocket } from "./websocket.js";
+import { authFetch } from "./auth.js";
 
 let active = false;
 let recording = false;
@@ -93,7 +94,7 @@ async function initWakeWord() {
 
   let data;
   try {
-    const res = await fetch("/api/stt/status");
+    const res = await authFetch("/api/stt/status");
     data = await res.json();
     if (!data.wakeword_enabled) return;
     if (data.wakeword) keyword = data.wakeword;
@@ -272,7 +273,7 @@ function startRecording(timeoutMs = SILENCE_TIMEOUT_MS) {
     try {
       const form = new FormData();
       form.append("file", blob, "recording.webm");
-      const res = await fetch("/api/transcribe", {
+      const res = await authFetch("/api/transcribe", {
         method: "POST",
         body: form,
       });
