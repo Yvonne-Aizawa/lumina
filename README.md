@@ -63,7 +63,8 @@ Copy the example below to `config.json` in the project root and adjust to your s
   "wakeword": {                     // Optional: server-side wake word detection
     "enabled": false,
     "keyword": "hey_jarvis",        // Must match a model in assets/wakeword/models/
-    "model_file": "custom.onnx"     // Optional: override model filename
+    "model_file": "custom.onnx",    // Optional: override model filename
+    "auto_start": false             // Auto-enable wake word, hide wake button
   },
   "tts": {                          // Optional: GPT-SoVITS text-to-speech
     "enabled": false,
@@ -81,6 +82,10 @@ Copy the example below to `config.json` in the project root and adjust to your s
   "brave": {                         // Optional: Brave Search web tool
     "enabled": false,
     "api_key": "BSA..."
+  },
+  "auth": {                           // Optional: API authentication
+    "enabled": false,
+    "api_key": "your-secret-key"     // Shared secret for all clients
   },
   "mcpServers": {                    // Optional: MCP tool servers
     "server-name": {
