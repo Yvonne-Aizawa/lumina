@@ -1,0 +1,44 @@
+{
+  "llm": {
+    "base_url": "http://localhost:1234/v1",
+    "api_key": "your-api-key",
+    "model": "model-name"
+  },
+  "stt": {
+    "enabled": false,
+    "model": "large-v3",
+    "device": "auto",
+    "compute_type": "float16",
+    "language": "en"
+  },
+  "wakeword": {
+    "enabled": false,
+    "keyword": "hey_jarvis",
+    "auto_start": false
+  },
+  "tts": {
+    "enabled": false,
+    "base_url": "http://localhost:9880",
+    "ref_audio_path": "/path/to/reference.wav",
+    "prompt_text": "Reference transcript text",
+    "prompt_lang": "en",
+    "text_lang": "en"
+  },
+  "heartbeat": {
+    "enabled": false,
+    "interval": 600,
+    "idle_threshold": 1200
+  },
+  "brave": {
+    "enabled": false,
+    "api_key": "BSA..."
+  },
+  "auth": {
+    "enabled": false,
+    "api_key": "your-secret-key"
+  },
+  "bash": {
+    "enabled": false
+  },
+  "mcpServers": {}
+}

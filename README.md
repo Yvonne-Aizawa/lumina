@@ -4,14 +4,16 @@ AI chatbot with a 3D VRM avatar. A FastAPI backend controls a Three.js browser f
 
 ## Features
 
-- 3D VRM avatar with Mixamo animation retargeting
+- 3D VRM avatar with Mixamo animation retargeting and random blinking
 - Any OpenAI-compatible LLM backend
 - Text-to-speech via [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)
 - Speech-to-text via [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 - Server-side wake word detection via [openWakeWord](https://github.com/dscripka/openWakeWord)
-- Persistent memory and state system
+- Persistent memory and state system (git-tracked)
+- Typing indicator while the LLM is responding
 - Background heartbeat for proactive AI messages
 - Web search via [Brave Search API](https://brave.com/search/api/)
+- Optional sandboxed bash command execution for the LLM
 - Extensible tool system via [MCP](https://modelcontextprotocol.io/) servers
 - Docker support with NVIDIA GPU passthrough
 
@@ -35,16 +37,16 @@ pip install -r requirements.txt
 
 ### Assets
 
-Place your files in the `assets/` directory:
+Place your files in the `assets/` directory (or a custom path via `assets_dir` in config):
 
-- `assets/models/avatar.vrm` — VRM avatar model
+- `assets/models/avatar.vrm` — VRM avatar model (filename configurable via `vrm_model` in config)
 - `assets/anims/` — Mixamo FBX animations (exported as **FBX Binary**, **Without Skin**)
 
-The filename stem becomes the animation name (e.g. `Waving.fbx` becomes `Waving`).
+The filename stem becomes the animation name (e.g. `Waving.fbx` becomes `Waving`). Animations are lazy-loaded on first use.
 
 ### Configuration
 
-Copy the example below to `config.json` in the project root and adjust to your setup:
+Copy `config.example.json` to `config.json` and adjust to your setup:
 
 ```jsonc
 {
@@ -87,6 +89,12 @@ Copy the example below to `config.json` in the project root and adjust to your s
     "enabled": false,
     "api_key": "your-secret-key"     // Shared secret for all clients
   },
+  "bash": {                           // Optional: allow LLM to run shell commands
+    "enabled": false
+  },
+  "state_dir": "/custom/path/to/state",   // Optional: override state directory
+  "assets_dir": "/custom/path/to/assets", // Optional: override assets directory
+  "vrm_model": "avatar.vrm",              // Optional: override VRM model filename
   "mcpServers": {                    // Optional: MCP tool servers
     "server-name": {
       "command": "...",
@@ -102,6 +110,8 @@ Only the `llm` section is required. All other sections are optional and default 
 ### Personality
 
 Create markdown files in `state/soul/` to define the AI's personality and system prompt. Files are loaded alphabetically at startup. Restart the server to pick up changes.
+
+Memory files created by the LLM (in `state/memories/`) are automatically git-committed on each change.
 
 ### Running
 
@@ -137,18 +147,19 @@ GPT-SoVITS must be running separately and accessible at the URL configured in `t
 2. Set `wakeword.keyword` in `config.json` — the model file defaults to `{keyword}.onnx`
 3. Optionally set `wakeword.model_file` to override the filename
 
-# get assets
-### vrm models.
+## Getting Assets
 
-you can use https://vroid.com/studio to make a model. its free on steam
+### VRM Models
 
-### how to get animations
+You can use [VRoid Studio](https://vroid.com/studio) to make a model. It's free on Steam.
 
-i just downloaded a bunch from https://www.mixamo.com/#/
+### Animations
 
-### How to get wake word models.
+Download animations from [Mixamo](https://www.mixamo.com/#/). Export as **FBX Binary**, **Without Skin**.
 
-i got mine from https://openwakeword.com/library
+### Wake Word Models
+
+Community models are available at [openWakeWord Library](https://openwakeword.com/library).
 
 ## License
 

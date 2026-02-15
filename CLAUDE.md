@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI chatbot with a 3D VRM avatar. FastAPI backend controls a Three.js browser frontend via WebSocket. The LLM can trigger character animations, manage persistent memories, and use external tools via MCP servers. Features include TTS (GPT-SoVITS), STT (faster-whisper), server-side wake word detection (openwakeword), and a background heartbeat system for proactive AI messages.
+**Lumina** — AI chatbot with a 3D VRM avatar. FastAPI backend controls a Three.js browser frontend via WebSocket. The LLM can trigger character animations, manage persistent memories, and use external tools via MCP servers. Features include TTS (GPT-SoVITS), STT (faster-whisper), server-side wake word detection (openwakeword), and a background heartbeat system for proactive AI messages.
 
 ## Running the Project
+
+Requires Python 3.12+ and optionally Node.js 22+ (for MCP servers that use `npx`). NVIDIA GPU + CUDA optional for STT acceleration.
 
 ```bash
 # Setup (first time)
@@ -27,7 +29,7 @@ No tests or linting are configured.
 
 **`app/server.py`** — FastAPI app, lifespan orchestrator, and route handlers. The lifespan function calls init functions from the subsystem modules below. Routes: `/` (frontend), `/api/chat` (POST), `/api/animations` (GET), `/api/play/{name}` (POST), `/api/chat/clear` (POST), `/api/chats` (GET), `/api/chats/new` (POST), `/api/chats/load` (POST), `/api/stt/status` (GET), `/api/transcribe` (POST), `/ws` (WebSocket). Auth routes are mounted from `app/auth.py`. All API routes use `Depends(require_auth)`; WebSocket checks token via query param; static files and `/`, `/api/auth/*` are unprotected.
 
-**`app/config.py`** — Path constants (`PROJECT_DIR`, `ASSETS_DIR`, `ANIMS_DIR`, `MODELS_DIR`, `CONFIG_PATH`) and `load_config()`.
+**`app/config.py`** — Path constants (`PROJECT_DIR`, `ASSETS_DIR`, `ANIMS_DIR`, `MODELS_DIR`, `STATE_DIR`, `VRM_MODEL`, `CONFIG_PATH`) and `load_config()`. Paths are overridable via `state_dir`, `assets_dir`, and `vrm_model` in config.json.
 
 **`app/broadcast.py`** — WebSocket client list and `broadcast()` for sending JSON to all connected browsers. Also contains animation helpers: `list_animations()`, `play_animation()`, `notify_tool_call()`.
 
@@ -39,7 +41,9 @@ No tests or linting are configured.
 
 **`app/heartbeat.py`** — Background heartbeat system. `start_heartbeat(config, chat_handler)` spawns the async loop. Tracks user idle time via `record_user_interaction()`. Pauses until user responds before sending another heartbeat.
 
-**`app/chat.py`** — Chat handler. Manages conversation history, LLM calls via OpenAI SDK, and tool execution loop (up to `MAX_TOOL_ROUNDS=10` iterations). Built-in tools: `play_animation`, `memory_create/read/edit/patch/delete/list`, `state_set/get/list/check_time`, `web_search` (Brave Search, when enabled). Also routes to MCP tools. The system prompt is built from `state/soul/` markdown files (excluding `heartbeat.md`), loaded once at init. Has a separate `heartbeat()` method for background prompts. An `asyncio.Lock` protects `_messages` for concurrency safety. `memory_patch` does string replacement (rejects if old_string matches 0 or >1 times).
+**`app/chat.py`** — Chat handler. Manages conversation history, LLM calls via OpenAI SDK, and tool execution loop (up to `MAX_TOOL_ROUNDS=10` iterations). The system prompt is built from `state/soul/` markdown files (excluding `heartbeat.md`), loaded once at init. Has a separate `heartbeat()` method for background prompts. An `asyncio.Lock` protects `_messages` for concurrency safety.
+
+**`app/tools.py`** — Tool definitions and handlers. Built-in tools: `play_animation`, `memory_create/read/edit/patch/delete/list`, `state_set/get/list/check_time`, `web_search` (Brave Search), `run_command` (bash, when enabled). Also routes to MCP tools. `memory_patch` does string replacement (rejects if old_string matches 0 or >1 times). Memory changes are automatically git-committed.
 
 **`app/auth.py`** — Token-based API authentication. `init_auth(config)` loads settings. `require_auth` is a FastAPI dependency added to all protected routes — extracts `Authorization: Bearer <token>` and validates against the configured API key using `hmac.compare_digest()`. `require_ws_auth(websocket)` checks token from `?token=` query param. Routes: `POST /api/auth/login`, `GET /api/auth/check`, `GET /api/auth/status`. No-ops when auth is disabled.
 
@@ -47,7 +51,8 @@ No tests or linting are configured.
 
 **`static/`** — Frontend ES modules served via FastAPI's StaticFiles mount:
 - `auth.js` — Auth module. `getToken()`/`setToken()`/`clearToken()` manage localStorage. `authFetch()` wraps `fetch()` with Bearer token header (shows login on 401). `checkAuth()` gates app init behind auth validation.
-- `app.js` — Entry point. Auth gate via `checkAuth()`, then loads VRM, preloads animations, starts render loop, initializes chat and wake word.
+- `app.js` — Entry point. Auth gate via `checkAuth()`, then loads VRM, starts render loop (with random blinking), initializes chat and wake word.
+- `scene.js` — Three.js scene, camera, lighting, and renderer setup.
 - `animations.js` — Mixamo FBX-to-VRM retargeting. Crossfade blending between animations (0.3s transitions).
 - `websocket.js` — Auto-reconnecting WebSocket for animation playback, heartbeat, TTS audio playback, and wake word detection events. Exports `getWebSocket()` for the wakeword module to send binary audio. Pauses/resumes wake word during audio. Triggers auto-listen window after TTS playback. Appends `?token=...` for auth. Background tabs skip audio playback (`document.hidden`).
 - `chat.js` — Chat UI, push-to-talk mic recording, sends audio to `/api/transcribe`. `sendMessage()` is exported for use by other modules (wake word). All fetch calls use `authFetch()`. Assistant messages are rendered as markdown via `marked.js` (CDN).
@@ -95,7 +100,7 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
 
 ## Configuration
 
-**`config.json`** (git-ignored) — Main configuration file:
+**`config.json`** (git-ignored) — Main configuration file. Copy from `config.example.json`:
 
 ```jsonc
 {
@@ -138,6 +143,12 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
     "enabled": false,
     "api_key": "your-secret-key"     // Shared secret for all clients
   },
+  "bash": {                           // Optional: allow LLM to run shell commands
+    "enabled": false
+  },
+  "state_dir": "/custom/path/to/state",   // Optional: override state directory
+  "assets_dir": "/custom/path/to/assets", // Optional: override assets directory
+  "vrm_model": "avatar.vrm",              // Optional: override VRM model filename
   "mcpServers": {                    // Optional: MCP tool servers
     "server-name": {
       "command": "...",
@@ -150,7 +161,7 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
 
 **`state/soul/*.md`** — Personality/identity files loaded alphabetically into the system prompt at startup. `heartbeat.md` is excluded from the system prompt and used only by the heartbeat system. Restart server to pick up changes.
 
-**`state/memories/*.md`** — Persistent memory files created/managed by the LLM via tool calls. Filenames are sanitized to prevent path traversal.
+**`state/memories/*.md`** — Persistent memory files created/managed by the LLM via tool calls. Filenames are sanitized to prevent path traversal. Changes are automatically git-committed.
 
 **`state/state.json`** — Persistent key-value state store managed by the LLM via `state_*` tools.
 
