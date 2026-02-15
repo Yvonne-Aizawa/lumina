@@ -77,12 +77,32 @@ window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// Random blink state
+let blinkTime = 0;
+let nextBlinkAt = 2 + Math.random() * 4; // seconds until next blink
+const BLINK_DURATION = 0.12; // seconds eyes stay closed
+
 // Animation loop
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
   const delta = clock.getDelta();
   if (mixer) mixer.update(delta);
+
+  // Random blinking
+  if (currentVRM?.expressionManager) {
+    blinkTime += delta;
+    if (blinkTime >= nextBlinkAt + BLINK_DURATION) {
+      // Blink finished, open eyes and schedule next
+      currentVRM.expressionManager.setValue("blink", 0);
+      blinkTime = 0;
+      nextBlinkAt = 2 + Math.random() * 4;
+    } else if (blinkTime >= nextBlinkAt) {
+      // Blink in progress, close eyes
+      currentVRM.expressionManager.setValue("blink", 1);
+    }
+  }
+
   if (currentVRM) currentVRM.update(delta);
   controls.update();
   renderer.render(scene, camera);
