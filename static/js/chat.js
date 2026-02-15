@@ -35,14 +35,36 @@ function addToolCall(name, args) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+function setInputsDisabled(disabled) {
+  chatSend.disabled = disabled;
+  chatInput.disabled = disabled;
+  chatMic.disabled = disabled;
+}
+
+function showTypingIndicator() {
+  const el = document.createElement("div");
+  el.className = "chat-msg assistant typing-indicator";
+  el.innerHTML =
+    '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+  el.id = "typing-indicator";
+  chatMessages.appendChild(el);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  const el = document.getElementById("typing-indicator");
+  if (el) el.remove();
+}
+
 async function sendMessage(text) {
   text = text || chatInput.value.trim();
   if (!text || sending) return;
 
   sending = true;
   chatInput.value = "";
-  chatSend.disabled = true;
+  setInputsDisabled(true);
   addMessage("user", text);
+  showTypingIndicator();
 
   try {
     const res = await authFetch("/api/chat", {
@@ -51,17 +73,19 @@ async function sendMessage(text) {
       body: JSON.stringify({ message: text }),
     });
     const data = await res.json();
+    removeTypingIndicator();
     if (data.response) {
       addMessage("assistant", data.response);
     } else if (data.error) {
       addMessage("assistant", `Error: ${data.error}`);
     }
   } catch (e) {
+    removeTypingIndicator();
     addMessage("assistant", "Failed to reach server.");
   }
 
   sending = false;
-  chatSend.disabled = false;
+  setInputsDisabled(false);
   chatInput.focus();
 }
 

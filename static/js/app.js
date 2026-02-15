@@ -4,16 +4,16 @@ import { VRMLoaderPlugin } from "@pixiv/three-vrm";
 
 import { scene, camera, renderer, controls } from "./scene.js";
 import {
-  animationClips,
-  loadMixamoAnimation,
+  ensureAnimation,
   playAnimationByName,
   setMixer,
+  setVRM,
 } from "./animations.js";
 import { connectWebSocket } from "./websocket.js";
 import { initChat } from "./chat.js";
 import { initSettings } from "./settings.js";
 import { initWakeWord } from "./wakeword.js";
-import { authFetch, checkAuth, initAuth } from "./auth.js";
+import { checkAuth, initAuth } from "./auth.js";
 
 let mixer = null;
 let currentVRM = null;
@@ -45,37 +45,15 @@ if (!authed) {
 
       mixer = new THREE.AnimationMixer(vrm.scene);
       setMixer(mixer);
+      setVRM(vrm);
 
-      // Fetch animation list from server and preload all
-      try {
-        const res = await authFetch("/api/animations");
-        const data = await res.json();
-        const animNames = data.animations || [];
-
-        for (const name of animNames) {
-          try {
-            const url = `./anims/${encodeURIComponent(name)}.fbx`;
-            const clip = await loadMixamoAnimation(url, vrm);
-            animationClips[name] = clip;
-            console.log("Loaded animation:", name);
-          } catch (e) {
-            console.warn("Failed to load animation:", name, e);
-          }
-        }
-
-        const loadedNames = Object.keys(animationClips);
-        const defaultAnim = loadedNames.includes("Idle")
-          ? "Idle"
-          : loadedNames[0];
-        if (defaultAnim) {
-          playAnimationByName(defaultAnim);
-        }
-        console.log(`Ready — ${loadedNames.length} animation(s) loaded`);
-      } catch (e) {
-        console.error("Failed to fetch animation list:", e);
+      // Preload Idle animation, others load on demand
+      const idleClip = await ensureAnimation("Idle");
+      if (idleClip) {
+        playAnimationByName("Idle");
       }
+      console.log("Ready — animations load on demand");
 
-      // Connect WebSocket after animations are loaded
       connectWebSocket();
     },
     undefined,

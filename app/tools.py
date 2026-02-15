@@ -3,21 +3,54 @@
 import asyncio
 import json
 import logging
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import config as _config
+
 log = logging.getLogger(__name__)
 
-PROJECT_DIR = Path(__file__).parent.parent
-MEMORIES_DIR = PROJECT_DIR / "state" / "memories"
-STATE_PATH = PROJECT_DIR / "state" / "state.json"
+
+def _memories_dir() -> Path:
+    return _config.STATE_DIR / "memories"
+
+
+def _state_path() -> Path:
+    return _config.STATE_DIR / "state.json"
 
 
 def _safe_filename(filename: str) -> Path:
     """Sanitize filename and return the full path in the memories dir."""
     name = filename.removesuffix(".md")
     name = Path(name).name  # strips any directory components
-    return MEMORIES_DIR / f"{name}.md"
+    return _memories_dir() / f"{name}.md"
+
+
+def _git_commit(message: str):
+    """Stage all changes in the state dir and commit with the given message."""
+    state_dir = _config.STATE_DIR
+    try:
+        subprocess.run(
+            ["git", "add", "-A"],
+            cwd=state_dir,
+            check=True,
+            capture_output=True,
+            timeout=10,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", message, "--allow-empty"],
+            cwd=state_dir,
+            check=True,
+            capture_output=True,
+            timeout=10,
+        )
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ) as e:
+        log.warning(f"Git commit failed in state dir: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -290,14 +323,15 @@ def handle_memory_create(arguments: dict) -> str:
     path = _safe_filename(filename)
     if path.exists():
         return f"Memory '{filename}' already exists. Use memory_edit to update it."
-    MEMORIES_DIR.mkdir(exist_ok=True)
+    _memories_dir().mkdir(exist_ok=True)
     path.write_text(content, encoding="utf-8")
+    _git_commit(f"Added {path.name}")
     return f"Memory '{filename}' created."
 
 
 def handle_memory_list() -> str:
-    MEMORIES_DIR.mkdir(exist_ok=True)
-    files = sorted(p.stem for p in MEMORIES_DIR.glob("*.md"))
+    _memories_dir().mkdir(exist_ok=True)
+    files = sorted(p.stem for p in _memories_dir().glob("*.md"))
     if not files:
         return "No memories found."
     return "Memories:\n" + "\n".join(f"- {f}" for f in files)
@@ -322,6 +356,7 @@ def handle_memory_edit(arguments: dict) -> str:
     if not path.exists():
         return f"Memory '{filename}' not found. Use memory_create to create it."
     path.write_text(content, encoding="utf-8")
+    _git_commit(f"Updated {path.name}")
     return f"Memory '{filename}' updated."
 
 
@@ -333,6 +368,7 @@ def handle_memory_delete(arguments: dict) -> str:
     if not path.exists():
         return f"Memory '{filename}' not found."
     path.unlink()
+    _git_commit(f"Deleted {path.name}")
     return f"Memory '{filename}' deleted."
 
 
@@ -355,20 +391,21 @@ def handle_memory_patch(arguments: dict) -> str:
         return f"Error: old_string matches {count} times in memory '{filename}'. Provide a more specific string."
     content = content.replace(old_string, new_string, 1)
     path.write_text(content, encoding="utf-8")
+    _git_commit(f"Updated {path.name}")
     return f"Memory '{filename}' patched."
 
 
 def _load_state() -> dict:
-    if STATE_PATH.exists():
+    if _state_path().exists():
         try:
-            return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            return json.loads(_state_path().read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return {}
     return {}
 
 
 def _save_state(state: dict):
-    STATE_PATH.write_text(
+    _state_path().write_text(
         json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 

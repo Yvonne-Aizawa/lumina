@@ -144,6 +144,9 @@ async function toggleWakeWord() {
 }
 
 async function startStreaming() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error("Microphone access requires a secure context (HTTPS).");
+  }
   mediaStream = await navigator.mediaDevices.getUserMedia({
     audio: {
       echoCancellation: true,

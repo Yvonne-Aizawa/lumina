@@ -9,6 +9,8 @@ ASSETS_DIR = PROJECT_DIR / "assets"
 ANIMS_DIR = ASSETS_DIR / "anims"
 MODELS_DIR = ASSETS_DIR / "models"
 CONFIG_PATH = PROJECT_DIR / "config.json"
+STATE_DIR = PROJECT_DIR / "state"
+VRM_MODEL = "avatar.vrm"
 
 
 @dataclass
@@ -83,9 +85,18 @@ class Config:
 
 
 def load_config() -> Config:
+    global STATE_DIR, ASSETS_DIR, ANIMS_DIR, MODELS_DIR, VRM_MODEL
     if not CONFIG_PATH.exists():
         return Config()
     raw = json.loads(CONFIG_PATH.read_text())
+    if "state_dir" in raw:
+        STATE_DIR = Path(raw["state_dir"]).resolve()
+    if "assets_dir" in raw:
+        ASSETS_DIR = Path(raw["assets_dir"]).resolve()
+        ANIMS_DIR = ASSETS_DIR / "anims"
+        MODELS_DIR = ASSETS_DIR / "models"
+    if "vrm_model" in raw:
+        VRM_MODEL = raw["vrm_model"]
     return Config(
         llm=LLMConfig(**raw.get("llm", {})),
         stt=STTConfig(**raw.get("stt", {})),

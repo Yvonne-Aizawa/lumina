@@ -3,13 +3,19 @@ import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 
 // Shared animation state
 let mixer = null;
+let vrm = null;
 let currentAnimName = null;
 let currentAction = null;
 const animationClips = {}; // name -> clip
+const loadingClips = {}; // name -> Promise (in-flight loads)
 const CROSSFADE_DURATION = 0.3;
 
 function setMixer(m) {
   mixer = m;
+}
+
+function setVRM(v) {
+  vrm = v;
 }
 
 // Mixamo bone name to VRM humanoid bone name mapping
@@ -166,16 +172,38 @@ function loadMixamoAnimation(url, vrm) {
   });
 }
 
+// Load a single animation on demand (deduplicates concurrent requests)
+async function ensureAnimation(name) {
+  if (animationClips[name]) return animationClips[name];
+  if (!vrm) return null;
+  if (loadingClips[name]) return loadingClips[name];
+  const url = `./anims/${encodeURIComponent(name)}.fbx`;
+  loadingClips[name] = loadMixamoAnimation(url, vrm)
+    .then((clip) => {
+      animationClips[name] = clip;
+      console.log("Loaded animation:", name);
+      return clip;
+    })
+    .catch((e) => {
+      console.warn("Failed to load animation:", name, e);
+      return null;
+    })
+    .finally(() => {
+      delete loadingClips[name];
+    });
+  return loadingClips[name];
+}
+
 // Play animation by name with crossfade blending
-function playAnimationByName(name) {
+async function playAnimationByName(name) {
   if (!mixer) return;
-  const clip = animationClips[name];
+  let clip = animationClips[name] || (await ensureAnimation(name));
   if (!clip) {
     console.warn("Animation not found:", name);
     return;
   }
 
-  const idleClip = animationClips["Idle"];
+  const idleClip = animationClips["Idle"] || (await ensureAnimation("Idle"));
   const isIdle = name === "Idle";
 
   // Remove any previous finished listener to avoid stacking
@@ -220,8 +248,10 @@ function playAnimationByName(name) {
 
 export {
   animationClips,
+  ensureAnimation,
   loadMixamoAnimation,
   mixamoToVRMBone,
   playAnimationByName,
   setMixer,
+  setVRM,
 };

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from openai import AsyncOpenAI
 
+from . import config as _config
 from .mcp_manager import MCPManager
 from .tools import get_builtin_tools, handle_tool_call
 
@@ -20,19 +21,27 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 10
-PROJECT_DIR = Path(__file__).parent.parent
-SOUL_DIR = PROJECT_DIR / "state" / "soul"
-HEARTBEAT_PATH = SOUL_DIR / "heartbeat.md"
-CHATS_DIR = PROJECT_DIR / "state" / "chats"
+
+
+def _soul_dir() -> Path:
+    return _config.STATE_DIR / "soul"
+
+
+def _heartbeat_path() -> Path:
+    return _config.STATE_DIR / "soul" / "heartbeat.md"
+
+
+def _chats_dir() -> Path:
+    return _config.STATE_DIR / "chats"
 
 
 def load_soul() -> str:
     """Load all markdown files from the soul/ directory into a single system prompt."""
-    if not SOUL_DIR.exists():
+    if not _soul_dir().exists():
         return "You are a helpful assistant."
     parts = []
-    for path in sorted(SOUL_DIR.glob("*.md")):
-        if path == HEARTBEAT_PATH:
+    for path in sorted(_soul_dir().glob("*.md")):
+        if path == _heartbeat_path():
             continue
         parts.append(path.read_text(encoding="utf-8").strip())
     return "\n\n".join(parts) if parts else "You are a helpful assistant."
@@ -75,10 +84,10 @@ class ChatHandler:
 
     def _new_session(self):
         """Start a new chat session."""
-        CHATS_DIR.mkdir(parents=True, exist_ok=True)
+        _chats_dir().mkdir(parents=True, exist_ok=True)
         now = datetime.now(timezone.utc)
         self._chat_id = now.strftime("%Y-%m-%dT%H-%M-%S")
-        self._chat_path = CHATS_DIR / f"{self._chat_id}.json"
+        self._chat_path = _chats_dir() / f"{self._chat_id}.json"
         self._title = now.strftime("%b %d, %Y %H:%M")
         self._messages = []
 
@@ -106,9 +115,9 @@ class ChatHandler:
 
     def list_sessions(self) -> list[dict]:
         """Return list of saved sessions, newest first."""
-        CHATS_DIR.mkdir(parents=True, exist_ok=True)
+        _chats_dir().mkdir(parents=True, exist_ok=True)
         sessions = []
-        for path in sorted(CHATS_DIR.glob("*.json"), reverse=True):
+        for path in sorted(_chats_dir().glob("*.json"), reverse=True):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 sessions.append(
@@ -130,7 +139,7 @@ class ChatHandler:
     def load_session(self, chat_id: str) -> list[dict]:
         """Load an existing session by id. Returns the messages."""
         safe_id = Path(chat_id).name  # prevent path traversal
-        path = CHATS_DIR / f"{safe_id}.json"
+        path = _chats_dir() / f"{safe_id}.json"
         if not path.exists():
             raise FileNotFoundError(f"Chat session '{chat_id}' not found.")
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -258,9 +267,9 @@ class ChatHandler:
 
     async def heartbeat(self) -> str | None:
         """Run a background heartbeat prompt. Returns message text only if AI chose to send one."""
-        if not HEARTBEAT_PATH.exists():
+        if not _heartbeat_path().exists():
             return None
-        heartbeat_prompt = HEARTBEAT_PATH.read_text(encoding="utf-8").strip()
+        heartbeat_prompt = _heartbeat_path().read_text(encoding="utf-8").strip()
         if not heartbeat_prompt:
             return None
 

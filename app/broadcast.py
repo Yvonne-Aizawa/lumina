@@ -5,7 +5,7 @@ import logging
 
 from fastapi import WebSocket
 
-from .config import ANIMS_DIR
+from . import config as _config
 
 log = logging.getLogger(__name__)
 
@@ -24,9 +24,9 @@ async def broadcast(message: dict):
 
 def list_animations() -> list[str]:
     """Return names of available animations (FBX files in anims/)."""
-    if not ANIMS_DIR.exists():
+    if not _config.ANIMS_DIR.exists():
         return []
-    return sorted(p.stem for p in ANIMS_DIR.glob("*.fbx"))
+    return sorted(p.stem for p in _config.ANIMS_DIR.glob("*.fbx"))
 
 
 async def play_animation(name: str):

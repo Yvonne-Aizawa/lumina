@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import config as _config
 from . import wakeword
 from .auth import init_auth, require_auth, require_ws_auth
 from .auth import router as auth_router
@@ -21,7 +22,7 @@ from .broadcast import (
     play_animation,
 )
 from .chat import ChatHandler
-from .config import ANIMS_DIR, MODELS_DIR, PROJECT_DIR, Config, load_config
+from .config import PROJECT_DIR, Config, load_config
 from .heartbeat import record_user_interaction, start_heartbeat
 from .mcp_manager import MCPManager
 from .stt import init_stt, transcribe
@@ -74,6 +75,9 @@ async def lifespan(app: FastAPI):
     await init_stt(config.stt)
     await wakeword.init_wakeword(config.wakeword)
     heartbeat_task = start_heartbeat(config.heartbeat, chat_handler)
+
+    # Mount anims after config is loaded (assets_dir may have changed)
+    app.mount("/anims", StaticFiles(directory=str(_config.ANIMS_DIR)), name="anims")
 
     yield
 
@@ -236,9 +240,8 @@ async def websocket_endpoint(ws: WebSocket):
 # Serve VRM model file
 @app.get("/avatar.vrm")
 async def serve_vrm():
-    return FileResponse(MODELS_DIR / "avatar.vrm")
+    return FileResponse(_config.MODELS_DIR / _config.VRM_MODEL)
 
 
-# Serve animation files and static assets
-app.mount("/anims", StaticFiles(directory=str(ANIMS_DIR)), name="anims")
+# Serve static assets (anims mount is in lifespan after config loads)
 app.mount("/static", StaticFiles(directory=str(PROJECT_DIR / "static")), name="static")
