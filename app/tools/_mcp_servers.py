@@ -50,7 +50,9 @@ def _safe_name(name: str) -> str:
     return name
 
 
-async def handle_mcp_server_create(arguments: dict, mcp_manager) -> str:
+async def handle_mcp_server_create(
+    arguments: dict, mcp_manager, *, network_allowed: bool = False
+) -> str:
     try:
         name = _safe_name(arguments.get("name", ""))
     except ValueError as e:
@@ -61,7 +63,7 @@ async def handle_mcp_server_create(arguments: dict, mcp_manager) -> str:
         return "Error: code is required."
 
     description = arguments.get("description", "")
-    allow_network = bool(arguments.get("allow_network", False))
+    allow_network = bool(arguments.get("allow_network", False)) and network_allowed
     auto_start = bool(arguments.get("auto_start", True))
 
     # Check if already exists

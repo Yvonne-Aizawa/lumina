@@ -55,7 +55,8 @@
       "collection": "memories"
     },
     "bash": true,
-    "mcp_servers": false
+    "mcp_servers": false,
+    "mcp_servers_allow_network": false
   },
   "mcpServers": {}
 }

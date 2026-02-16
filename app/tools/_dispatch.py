@@ -109,7 +109,10 @@ async def handle_tool_call(
         return handle_vector_list()
 
     if name == "mcp_server_create":
-        return await handle_mcp_server_create(arguments, mcp_manager)
+        tc = builtin_tools_config or BuiltinToolsConfig()
+        return await handle_mcp_server_create(
+            arguments, mcp_manager, network_allowed=tc.mcp_servers_allow_network
+        )
     if name == "mcp_server_edit":
         return await handle_mcp_server_edit(arguments, mcp_manager)
     if name == "mcp_server_delete":

@@ -408,6 +408,29 @@ def get_builtin_tools(
 
     # --- MCP server management ---
     if tc.mcp_servers:
+        _mcp_create_props = {
+            "name": {
+                "type": "string",
+                "description": "Server name (letters, digits, underscores; must start with a letter).",
+            },
+            "code": {
+                "type": "string",
+                "description": "Python source code implementing the MCP server.",
+            },
+            "description": {
+                "type": "string",
+                "description": "Short description of what this server does.",
+            },
+            "auto_start": {
+                "type": "boolean",
+                "description": "Start immediately and on app restart. Default true.",
+            },
+        }
+        if tc.mcp_servers_allow_network:
+            _mcp_create_props["allow_network"] = {
+                "type": "boolean",
+                "description": "Allow network access (socket, urllib, requests, httpx). Default false.",
+            }
         tools.extend(
             [
                 {
@@ -433,28 +456,7 @@ def get_builtin_tools(
                         ),
                         "parameters": {
                             "type": "object",
-                            "properties": {
-                                "name": {
-                                    "type": "string",
-                                    "description": "Server name (letters, digits, underscores; must start with a letter).",
-                                },
-                                "code": {
-                                    "type": "string",
-                                    "description": "Python source code implementing the MCP server.",
-                                },
-                                "description": {
-                                    "type": "string",
-                                    "description": "Short description of what this server does.",
-                                },
-                                "allow_network": {
-                                    "type": "boolean",
-                                    "description": "Allow network access (socket, urllib, requests, httpx). Default false.",
-                                },
-                                "auto_start": {
-                                    "type": "boolean",
-                                    "description": "Start immediately and on app restart. Default true.",
-                                },
-                            },
+                            "properties": _mcp_create_props,
                             "required": ["name", "code", "description"],
                         },
                     },

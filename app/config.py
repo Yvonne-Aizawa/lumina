@@ -99,6 +99,7 @@ class BuiltinToolsConfig:
     vector_search: VectorSearchConfig = field(default_factory=VectorSearchConfig)
     bash: bool = True
     mcp_servers: bool = False
+    mcp_servers_allow_network: bool = False
 
 
 @dataclass
@@ -125,6 +126,7 @@ def _parse_builtin_tools(raw: dict) -> BuiltinToolsConfig:
         "state",
         "bash",
         "mcp_servers",
+        "mcp_servers_allow_network",
     ):
         if key in raw:
             kw[key] = raw[key]
