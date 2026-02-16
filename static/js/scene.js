@@ -7,10 +7,10 @@ scene.background = new THREE.Color(0xffffff);
 
 // Camera
 const camera = new THREE.PerspectiveCamera(
-    30,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    100,
+  30,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  100,
 );
 camera.position.set(0, 1.2, 3);
 
@@ -37,4 +37,35 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.1;
 controls.update();
 
-export { scene, camera, renderer, controls };
+// Background image
+const textureLoader = new THREE.TextureLoader();
+
+function setBackgroundImage(filename) {
+  textureLoader.load(
+    `./backgrounds/${filename}`,
+    (texture) => {
+      scene.background = texture;
+    },
+    undefined,
+    (err) => {
+      console.warn("Failed to load background:", filename, err);
+    },
+  );
+}
+
+// Apply default background from config
+fetch("/api/config/background")
+  .then((r) => r.json())
+  .then(({ background }) => {
+    if (!background) return;
+    if (/^#([0-9a-f]{3,8})$/i.test(background)) {
+      const color = new THREE.Color(background);
+      scene.background = color;
+      renderer.setClearColor(color);
+    } else {
+      setBackgroundImage(background);
+    }
+  })
+  .catch(() => {});
+
+export { scene, camera, renderer, controls, setBackgroundImage };

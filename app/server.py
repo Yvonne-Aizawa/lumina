@@ -15,11 +15,14 @@ from . import wakeword
 from .auth import init_auth, require_auth, require_ws_auth
 from .auth import router as auth_router
 from .broadcast import (
+    _background_filename,
     broadcast,
     connected_clients,
     list_animations,
+    list_backgrounds,
     notify_tool_call,
     play_animation,
+    set_background,
 )
 from .chat import ChatHandler
 from .config import PROJECT_DIR, Config, load_config
@@ -37,6 +40,7 @@ log = logging.getLogger(__name__)
 mcp_manager: MCPManager | None = None
 chat_handler: ChatHandler | None = None
 heartbeat_task: asyncio.Task | None = None
+_default_background: str | None = None
 
 
 # --- App lifecycle ---
@@ -44,30 +48,37 @@ heartbeat_task: asyncio.Task | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global mcp_manager, chat_handler, heartbeat_task
+    global mcp_manager, chat_handler, heartbeat_task, _default_background
 
     config = load_config()
+    _default_background = config.background
 
     # Start MCP manager
     mcp_manager = MCPManager()
     await mcp_manager.start(config.mcp_servers)
 
     # Create chat handler
+    backgrounds = list_backgrounds()
     chat_handler = ChatHandler(
         llm_config=config.llm,
         mcp_manager=mcp_manager,
         animation_names=list_animations(),
         play_animation_fn=play_animation,
         notify_tool_call_fn=notify_tool_call,
-        brave_api_key=config.brave.api_key if config.brave.enabled else None,
         bash_enabled=config.bash.enabled,
+        background_names=backgrounds,
+        set_background_fn=set_background,
+        builtin_tools_config=config.builtin_tools,
     )
 
     log.info(f"Available animations: {list_animations()}")
+    log.info(f"Available backgrounds: {backgrounds}")
     log.info(
         f"MCP tools: {[t['function']['name'] for t in mcp_manager.get_openai_tools()]}"
     )
-    log.info(f"Brave Search: {'enabled' if config.brave.enabled else 'disabled'}")
+    log.info(
+        f"Brave Search: {'enabled' if config.builtin_tools.web_search.brave_api_key else 'disabled'}"
+    )
 
     # Initialise subsystems
     init_auth(config.auth)
@@ -76,8 +87,14 @@ async def lifespan(app: FastAPI):
     await wakeword.init_wakeword(config.wakeword)
     heartbeat_task = start_heartbeat(config.heartbeat, chat_handler)
 
-    # Mount anims after config is loaded (assets_dir may have changed)
+    # Mount asset dirs after config is loaded (assets_dir may have changed)
     app.mount("/anims", StaticFiles(directory=str(_config.ANIMS_DIR)), name="anims")
+    if _config.BACKGROUNDS_DIR.exists():
+        app.mount(
+            "/backgrounds",
+            StaticFiles(directory=str(_config.BACKGROUNDS_DIR)),
+            name="backgrounds",
+        )
 
     yield
 
@@ -103,9 +120,23 @@ async def index():
     return FileResponse(PROJECT_DIR / "static" / "index.html")
 
 
+@app.get("/api/config/background")
+async def api_config_background():
+    bg = _default_background
+    # Resolve image stem to full filename if it's not a color
+    if bg and not bg.startswith("#"):
+        bg = _background_filename(bg)
+    return {"background": bg}
+
+
 @app.get("/api/animations", dependencies=[Depends(require_auth)])
 async def get_animations():
     return {"animations": list_animations()}
+
+
+@app.get("/api/backgrounds", dependencies=[Depends(require_auth)])
+async def get_backgrounds():
+    return {"backgrounds": list_backgrounds()}
 
 
 @app.post("/api/play/{animation_name}", dependencies=[Depends(require_auth)])

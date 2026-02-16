@@ -43,7 +43,7 @@ No tests or linting are configured.
 
 **`app/chat.py`** — Chat handler. Manages conversation history, LLM calls via OpenAI SDK, and tool execution loop (up to `MAX_TOOL_ROUNDS=10` iterations). The system prompt is built from `state/soul/` markdown files (excluding `heartbeat.md`), loaded once at init. Has a separate `heartbeat()` method for background prompts. An `asyncio.Lock` protects `_messages` for concurrency safety.
 
-**`app/tools.py`** — Tool definitions and handlers. Built-in tools: `play_animation`, `memory_create/read/edit/patch/delete/list`, `state_set/get/list/check_time`, `web_search` (Brave Search), `run_command` (bash, when enabled). Also routes to MCP tools. `memory_patch` does string replacement (rejects if old_string matches 0 or >1 times). Memory changes are automatically git-committed.
+**`app/tools.py`** — Tool definitions and handlers. Built-in tools are grouped and individually toggleable via `builtin_tools` in config: **animation** (`get_animations`, `play_animation`, `get_backgrounds`, `set_background`), **memory** (`memory_create/read/edit/patch/delete/list`), **state** (`state_set/get/list/check_time`), **web_search** (`web_search` via Brave Search), **bash** (`run_command`). The `get_animations`/`get_backgrounds` tools return available names on demand (not embedded in tool schemas) to save tokens. Also routes to MCP tools. `memory_patch` does string replacement (rejects if old_string matches 0 or >1 times). Memory changes are automatically git-committed.
 
 **`app/auth.py`** — Token-based API authentication. `init_auth(config)` loads settings. `require_auth` is a FastAPI dependency added to all protected routes — extracts `Authorization: Bearer <token>` and validates against the configured API key using `hmac.compare_digest()`. `require_ws_auth(websocket)` checks token from `?token=` query param. Routes: `POST /api/auth/login`, `GET /api/auth/check`, `GET /api/auth/status`. No-ops when auth is disabled.
 
@@ -135,16 +135,25 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
     "interval": 600,                 // seconds between heartbeat checks
     "idle_threshold": 1200           // seconds of user inactivity before triggering
   },
-  "brave": {                         // Optional: Brave Search web tool
-    "enabled": false,
-    "api_key": "BSA..."
-  },
   "auth": {                           // Optional: API authentication
     "enabled": false,
     "api_key": "your-secret-key"     // Shared secret for all clients
   },
   "bash": {                           // Optional: allow LLM to run shell commands
     "enabled": false
+  },
+  "builtin_tools": {                 // Optional: toggle built-in tool groups
+    "animation": true,               // play_animation, set_background, get_*
+    "memory": true,                  // memory_create/read/edit/patch/delete/list
+    "state": true,                   // state_set/get/list/check_time
+    "web_search": {                  // web_search tool
+      "enabled": false,
+      "brave": {                     // Brave Search provider
+        "enabled": false,
+        "api_key": "BSA..."
+      }
+    },
+    "bash": true                     // run_command (also requires bash.enabled)
   },
   "state_dir": "/custom/path/to/state",   // Optional: override state directory
   "assets_dir": "/custom/path/to/assets", // Optional: override assets directory

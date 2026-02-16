@@ -34,6 +34,34 @@ async def play_animation(name: str):
     await broadcast({"action": "play", "animation": name})
 
 
+def list_backgrounds() -> list[str]:
+    """Return names of available background images in backgrounds/."""
+    if not _config.BACKGROUNDS_DIR.exists():
+        return []
+    exts = {".jpg", ".jpeg", ".png", ".webp"}
+    return sorted(
+        p.stem for p in _config.BACKGROUNDS_DIR.iterdir() if p.suffix.lower() in exts
+    )
+
+
+def _background_filename(stem: str) -> str | None:
+    """Find the actual filename for a background stem."""
+    if not _config.BACKGROUNDS_DIR.exists():
+        return None
+    exts = {".jpg", ".jpeg", ".png", ".webp"}
+    for p in _config.BACKGROUNDS_DIR.iterdir():
+        if p.stem == stem and p.suffix.lower() in exts:
+            return p.name
+    return None
+
+
+async def set_background(name: str):
+    """Send a background change command to all connected browsers."""
+    filename = _background_filename(name)
+    if filename:
+        await broadcast({"action": "set_background", "filename": filename})
+
+
 async def notify_tool_call(name: str, arguments: dict):
     """Broadcast a tool call notification to all connected browsers."""
     await broadcast({"action": "tool_call", "name": name, "arguments": arguments})

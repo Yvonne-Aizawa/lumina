@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config as _config
+from .config import BuiltinToolsConfig
 
 log = logging.getLogger(__name__)
 
@@ -60,210 +61,275 @@ def _git_commit(message: str):
 
 def get_builtin_tools(
     animation_names: list[str],
-    brave_api_key: str | None = None,
     bash_enabled: bool = False,
+    background_names: list[str] | None = None,
+    builtin_tools_config: BuiltinToolsConfig | None = None,
 ) -> list[dict]:
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "play_animation",
-                "description": (
-                    "Play an animation on the 3D avatar. "
-                    "Use this to express emotions or actions visually."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "The animation to play.",
-                            "enum": animation_names,
-                        }
+    tc = builtin_tools_config or BuiltinToolsConfig()
+    tools = []
+
+    # --- Animation group ---
+    if tc.animation:
+        tools.extend(
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_animations",
+                        "description": "List all available animations for the 3D avatar.",
+                        "parameters": {"type": "object", "properties": {}},
                     },
-                    "required": ["name"],
                 },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "memory_create",
-                "description": "Create a new memory as a markdown file. Use this to remember important information about the user or conversations.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "filename": {
-                            "type": "string",
-                            "description": "Name for the memory file (without .md extension).",
-                        },
-                        "content": {
-                            "type": "string",
-                            "description": "Markdown content to write to the memory file.",
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "play_animation",
+                        "description": (
+                            "Play an animation on the 3D avatar. "
+                            "Use this to express emotions or actions visually. "
+                            "Call get_animations first if you don't know the available names."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "The animation to play.",
+                                }
+                            },
+                            "required": ["name"],
                         },
                     },
-                    "required": ["filename", "content"],
                 },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "memory_read",
-                "description": "Read a memory file. Use this to recall previously stored information.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "filename": {
-                            "type": "string",
-                            "description": "Name of the memory file to read (without .md extension). Use 'all' to list all memory files.",
+            ]
+        )
+        if background_names:
+            tools.extend(
+                [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "get_backgrounds",
+                            "description": "List all available background images for the 3D scene.",
+                            "parameters": {"type": "object", "properties": {}},
                         },
                     },
-                    "required": ["filename"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "memory_edit",
-                "description": "Edit an existing memory file by replacing its content.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "filename": {
-                            "type": "string",
-                            "description": "Name of the memory file to edit (without .md extension).",
-                        },
-                        "content": {
-                            "type": "string",
-                            "description": "New markdown content for the memory file.",
-                        },
-                    },
-                    "required": ["filename", "content"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "memory_delete",
-                "description": "Delete a memory file.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "filename": {
-                            "type": "string",
-                            "description": "Name of the memory file to delete (without .md extension).",
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "set_background",
+                            "description": (
+                                "Change the background image of the 3D scene. "
+                                "Call get_backgrounds first if you don't know the available names."
+                            ),
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "The background image to display.",
+                                    }
+                                },
+                                "required": ["name"],
+                            },
                         },
                     },
-                    "required": ["filename"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "memory_patch",
-                "description": "Patch a memory file by replacing a specific substring with new text. Use this for small edits instead of rewriting the whole file.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "filename": {
-                            "type": "string",
-                            "description": "Name of the memory file to patch (without .md extension).",
-                        },
-                        "old_string": {
-                            "type": "string",
-                            "description": "The exact text to find and replace.",
-                        },
-                        "new_string": {
-                            "type": "string",
-                            "description": "The text to replace it with.",
-                        },
-                    },
-                    "required": ["filename", "old_string", "new_string"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "memory_list",
-                "description": "List all saved memory files by name.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "state_set",
-                "description": "Set a key in the persistent state store. Value can be any type (string, number, boolean, array, object). Use the string 'now' to store the current timestamp.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "key": {
-                            "type": "string",
-                            "description": "The state name / key to set.",
-                        },
-                        "value": {
-                            "description": "The value to store. Can be any JSON type (string, number, boolean, array, object). Use the string 'now' to store the current timestamp.",
+                ]
+            )
+
+    # --- Memory group ---
+    if tc.memory:
+        tools.extend(
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "memory_create",
+                        "description": "Create a new memory as a markdown file. Use this to remember important information about the user or conversations.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "filename": {
+                                    "type": "string",
+                                    "description": "Name for the memory file (without .md extension).",
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "Markdown content to write to the memory file.",
+                                },
+                            },
+                            "required": ["filename", "content"],
                         },
                     },
-                    "required": ["key", "value"],
                 },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "state_get",
-                "description": "Get a single value from the persistent state store.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "key": {
-                            "type": "string",
-                            "description": "The key to look up.",
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "memory_read",
+                        "description": "Read a memory file. Use this to recall previously stored information.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "filename": {
+                                    "type": "string",
+                                    "description": "Name of the memory file to read (without .md extension). Use 'all' to list all memory files.",
+                                },
+                            },
+                            "required": ["filename"],
                         },
                     },
-                    "required": ["key"],
                 },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "state_list",
-                "description": "List all keys and values in the persistent state store.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "state_check_time",
-                "description": "Check how long ago a timestamp was stored for a key. Returns elapsed time in human-readable form and seconds.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "key": {
-                            "type": "string",
-                            "description": "The key holding a timestamp value.",
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "memory_edit",
+                        "description": "Edit an existing memory file by replacing its content.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "filename": {
+                                    "type": "string",
+                                    "description": "Name of the memory file to edit (without .md extension).",
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "New markdown content for the memory file.",
+                                },
+                            },
+                            "required": ["filename", "content"],
                         },
                     },
-                    "required": ["key"],
                 },
-            },
-        },
-    ]
-    if brave_api_key is not None:
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "memory_delete",
+                        "description": "Delete a memory file.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "filename": {
+                                    "type": "string",
+                                    "description": "Name of the memory file to delete (without .md extension).",
+                                },
+                            },
+                            "required": ["filename"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "memory_patch",
+                        "description": "Patch a memory file by replacing a specific substring with new text. Use this for small edits instead of rewriting the whole file.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "filename": {
+                                    "type": "string",
+                                    "description": "Name of the memory file to patch (without .md extension).",
+                                },
+                                "old_string": {
+                                    "type": "string",
+                                    "description": "The exact text to find and replace.",
+                                },
+                                "new_string": {
+                                    "type": "string",
+                                    "description": "The text to replace it with.",
+                                },
+                            },
+                            "required": ["filename", "old_string", "new_string"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "memory_list",
+                        "description": "List all saved memory files by name.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                        },
+                    },
+                },
+            ]
+        )
+
+    # --- State group ---
+    if tc.state:
+        tools.extend(
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "state_set",
+                        "description": "Set a key in the persistent state store. Value can be any type (string, number, boolean, array, object). Use the string 'now' to store the current timestamp.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "key": {
+                                    "type": "string",
+                                    "description": "The state name / key to set.",
+                                },
+                                "value": {
+                                    "description": "The value to store. Can be any JSON type (string, number, boolean, array, object). Use the string 'now' to store the current timestamp.",
+                                },
+                            },
+                            "required": ["key", "value"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "state_get",
+                        "description": "Get a single value from the persistent state store.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "key": {
+                                    "type": "string",
+                                    "description": "The key to look up.",
+                                },
+                            },
+                            "required": ["key"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "state_list",
+                        "description": "List all keys and values in the persistent state store.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "state_check_time",
+                        "description": "Check how long ago a timestamp was stored for a key. Returns elapsed time in human-readable form and seconds.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "key": {
+                                    "type": "string",
+                                    "description": "The key holding a timestamp value.",
+                                },
+                            },
+                            "required": ["key"],
+                        },
+                    },
+                },
+            ]
+        )
+
+    # --- Web search ---
+    if tc.web_search.brave_api_key:
         tools.append(
             {
                 "type": "function",
@@ -287,7 +353,9 @@ def get_builtin_tools(
                 },
             }
         )
-    if bash_enabled:
+
+    # --- Bash ---
+    if tc.bash and bash_enabled:
         tools.append(
             {
                 "type": "function",
@@ -307,6 +375,7 @@ def get_builtin_tools(
                 },
             }
         )
+
     return tools
 
 
@@ -531,10 +600,20 @@ async def handle_tool_call(
     *,
     animation_names: list[str],
     play_animation_fn,
-    brave_api_key: str | None,
     mcp_manager,
+    background_names: list[str] | None = None,
+    set_background_fn=None,
+    builtin_tools_config: BuiltinToolsConfig | None = None,
 ) -> str:
     """Execute a tool call and return the result as a string."""
+    if name == "get_animations":
+        return f"Available animations: {', '.join(animation_names)}"
+
+    if name == "get_backgrounds":
+        if background_names:
+            return f"Available backgrounds: {', '.join(background_names)}"
+        return "No backgrounds available."
+
     if name == "play_animation":
         anim_name = arguments.get("name", "")
         if anim_name in animation_names:
@@ -565,8 +644,18 @@ async def handle_tool_call(
     if name == "state_check_time":
         return handle_state_check_time(arguments)
 
+    if name == "set_background" and set_background_fn and background_names:
+        bg_name = arguments.get("name", "")
+        if bg_name in background_names:
+            await set_background_fn(bg_name)
+            return f"Background changed to: {bg_name}"
+        return (
+            f"Unknown background: {bg_name}. Available: {', '.join(background_names)}"
+        )
+
     if name == "web_search":
-        return await handle_web_search(arguments, brave_api_key)
+        tc = builtin_tools_config or BuiltinToolsConfig()
+        return await handle_web_search(arguments, tc.web_search.brave_api_key)
     if name == "run_command":
         return await handle_run_command(arguments)
 

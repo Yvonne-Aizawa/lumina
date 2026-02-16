@@ -29,16 +29,25 @@
     "interval": 600,
     "idle_threshold": 1200
   },
-  "brave": {
-    "enabled": false,
-    "api_key": "BSA..."
-  },
   "auth": {
     "enabled": false,
     "api_key": "your-secret-key"
   },
   "bash": {
     "enabled": false
+  },
+  "builtin_tools": {
+    "animation": true,
+    "memory": true,
+    "state": true,
+    "web_search": {
+      "enabled": false,
+      "brave": {
+        "enabled": false,
+        "api_key": "BSA..."
+      }
+    },
+    "bash": true
   },
   "mcpServers": {}
 }

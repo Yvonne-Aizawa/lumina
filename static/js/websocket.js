@@ -1,6 +1,7 @@
 import { getToken } from "./auth.js";
 import { playAnimationByName } from "./animations.js";
 import { addMessage, addToolCall } from "./chat.js";
+import { setBackgroundImage } from "./scene.js";
 import {
   pauseWakeWord,
   resumeWakeWord,
@@ -36,6 +37,8 @@ function connectWebSocket() {
         addMessage("assistant", msg.content);
       } else if (msg.action === "tool_call" && msg.name) {
         addToolCall(msg.name, msg.arguments);
+      } else if (msg.action === "set_background" && msg.filename) {
+        setBackgroundImage(msg.filename);
       } else if (msg.action === "wakeword_detected") {
         onWakeWordDetected(msg.keyword, msg.score);
       } else if (msg.action === "audio" && msg.data) {

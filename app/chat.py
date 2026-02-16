@@ -16,7 +16,7 @@ from .mcp_manager import MCPManager
 from .tools import get_builtin_tools, handle_tool_call
 
 if TYPE_CHECKING:
-    from .config import LLMConfig
+    from .config import BuiltinToolsConfig, LLMConfig
 
 log = logging.getLogger(__name__)
 
@@ -55,8 +55,10 @@ class ChatHandler:
         animation_names: list[str],
         play_animation_fn,
         notify_tool_call_fn=None,
-        brave_api_key: str | None = None,
         bash_enabled: bool = False,
+        background_names: list[str] | None = None,
+        set_background_fn=None,
+        builtin_tools_config: BuiltinToolsConfig | None = None,
     ):
         self._client = AsyncOpenAI(
             base_url=llm_config.base_url,
@@ -68,8 +70,10 @@ class ChatHandler:
         self._animation_names = animation_names
         self._play_animation = play_animation_fn
         self._notify_tool_call = notify_tool_call_fn
-        self._brave_api_key = brave_api_key
         self._bash_enabled = bash_enabled
+        self._background_names = background_names or []
+        self._set_background = set_background_fn
+        self._builtin_tools_config = builtin_tools_config
 
         # Conversation history (in-memory, single session)
         self._messages: list[dict] = []
@@ -158,7 +162,10 @@ class ChatHandler:
     def _get_all_tools(self) -> list[dict]:
         return (
             get_builtin_tools(
-                self._animation_names, self._brave_api_key, self._bash_enabled
+                self._animation_names,
+                bash_enabled=self._bash_enabled,
+                background_names=self._background_names,
+                builtin_tools_config=self._builtin_tools_config,
             )
             + self._mcp.get_openai_tools()
         )
@@ -169,8 +176,10 @@ class ChatHandler:
             arguments,
             animation_names=self._animation_names,
             play_animation_fn=self._play_animation,
-            brave_api_key=self._brave_api_key,
             mcp_manager=self._mcp,
+            background_names=self._background_names,
+            set_background_fn=self._set_background,
+            builtin_tools_config=self._builtin_tools_config,
         )
 
     # --- Chat ---

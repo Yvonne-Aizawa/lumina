@@ -81,16 +81,25 @@ Copy `config.example.json` to `config.json` and adjust to your setup:
     "interval": 600,                 // seconds between heartbeat checks
     "idle_threshold": 1200           // seconds of user inactivity before triggering
   },
-  "brave": {                         // Optional: Brave Search web tool
-    "enabled": false,
-    "api_key": "BSA..."
-  },
   "auth": {                           // Optional: API authentication
     "enabled": false,
     "api_key": "your-secret-key"     // Shared secret for all clients
   },
   "bash": {                           // Optional: allow LLM to run shell commands
     "enabled": false
+  },
+  "builtin_tools": {                 // Optional: toggle built-in tool groups
+    "animation": true,               // play_animation, set_background, get_*
+    "memory": true,                  // memory_create/read/edit/patch/delete/list
+    "state": true,                   // state_set/get/list/check_time
+    "web_search": {                  // web_search tool
+      "enabled": false,
+      "brave": {                     // Brave Search provider
+        "enabled": false,
+        "api_key": "BSA..."
+      }
+    },
+    "bash": true                     // run_command (also requires bash.enabled)
   },
   "state_dir": "/custom/path/to/state",   // Optional: override state directory
   "assets_dir": "/custom/path/to/assets", // Optional: override assets directory

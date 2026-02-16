@@ -8,6 +8,7 @@ PROJECT_DIR = Path(__file__).parent.parent
 ASSETS_DIR = PROJECT_DIR / "assets"
 ANIMS_DIR = ASSETS_DIR / "anims"
 MODELS_DIR = ASSETS_DIR / "models"
+BACKGROUNDS_DIR = ASSETS_DIR / "backgrounds"
 CONFIG_PATH = PROJECT_DIR / "config.json"
 STATE_DIR = PROJECT_DIR / "state"
 VRM_MODEL = "avatar.vrm"
@@ -55,12 +56,6 @@ class HeartbeatConfig:
 
 
 @dataclass
-class BraveConfig:
-    enabled: bool = False
-    api_key: str | None = None
-
-
-@dataclass
 class AuthConfig:
     enabled: bool = False
     api_key: str = ""
@@ -72,20 +67,63 @@ class BashConfig:
 
 
 @dataclass
+class WebSearchConfig:
+    enabled: bool = False
+    brave: dict = field(default_factory=dict)
+
+    @property
+    def brave_api_key(self) -> str | None:
+        if not self.enabled:
+            return None
+        brave = self.brave
+        if not brave.get("enabled", False):
+            return None
+        return brave.get("api_key")
+
+
+@dataclass
+class BuiltinToolsConfig:
+    animation: bool = True
+    memory: bool = True
+    state: bool = True
+    web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
+    bash: bool = True
+
+
+@dataclass
 class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     stt: STTConfig = field(default_factory=STTConfig)
     wakeword: WakeWordConfig = field(default_factory=WakeWordConfig)
     tts: TTSConfig = field(default_factory=TTSConfig)
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
-    brave: BraveConfig = field(default_factory=BraveConfig)
     auth: AuthConfig = field(default_factory=AuthConfig)
     bash: BashConfig = field(default_factory=BashConfig)
+    builtin_tools: BuiltinToolsConfig = field(default_factory=BuiltinToolsConfig)
     mcp_servers: dict[str, dict] = field(default_factory=dict)
+    background: str | None = None
+
+
+def _parse_builtin_tools(raw: dict) -> BuiltinToolsConfig:
+    """Parse builtin_tools config, handling nested web_search object."""
+    kw = {}
+    for key in ("animation", "memory", "state", "bash"):
+        if key in raw:
+            kw[key] = raw[key]
+    ws = raw.get("web_search", {})
+    if isinstance(ws, bool):
+        # Backwards compat: bare boolean
+        kw["web_search"] = WebSearchConfig(enabled=ws)
+    elif isinstance(ws, dict):
+        kw["web_search"] = WebSearchConfig(
+            enabled=ws.get("enabled", False),
+            brave=ws.get("brave", {}),
+        )
+    return BuiltinToolsConfig(**kw)
 
 
 def load_config() -> Config:
-    global STATE_DIR, ASSETS_DIR, ANIMS_DIR, MODELS_DIR, VRM_MODEL
+    global STATE_DIR, ASSETS_DIR, ANIMS_DIR, MODELS_DIR, BACKGROUNDS_DIR, VRM_MODEL
     if not CONFIG_PATH.exists():
         return Config()
     raw = json.loads(CONFIG_PATH.read_text())
@@ -95,6 +133,7 @@ def load_config() -> Config:
         ASSETS_DIR = Path(raw["assets_dir"]).resolve()
         ANIMS_DIR = ASSETS_DIR / "anims"
         MODELS_DIR = ASSETS_DIR / "models"
+        BACKGROUNDS_DIR = ASSETS_DIR / "backgrounds"
     if "vrm_model" in raw:
         VRM_MODEL = raw["vrm_model"]
     return Config(
@@ -103,8 +142,9 @@ def load_config() -> Config:
         wakeword=WakeWordConfig(**raw.get("wakeword", {})),
         tts=TTSConfig(**raw.get("tts", {})),
         heartbeat=HeartbeatConfig(**raw.get("heartbeat", {})),
-        brave=BraveConfig(**raw.get("brave", {})),
         auth=AuthConfig(**raw.get("auth", {})),
         bash=BashConfig(**raw.get("bash", {})),
+        builtin_tools=_parse_builtin_tools(raw.get("builtin_tools", {})),
         mcp_servers=raw.get("mcp_servers") or raw.get("mcpServers") or {},
+        background=raw.get("background"),
     )
