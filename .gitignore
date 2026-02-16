@@ -1,5 +1,4 @@
 assets/
-state/
 venv/
 __pycache__/
 config.json
