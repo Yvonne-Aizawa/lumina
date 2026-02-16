@@ -193,7 +193,6 @@ def build_wrapper_script(server_py: Path, *, allow_network: bool = False) -> str
 
         # --- Sandbox import hook ---
         _ALLOWED = set({allowed_repr})
-        # Also allow any submodules of allowed packages
         _ALLOWED_BASES = _ALLOWED.copy()
 
         class _SandboxImporter(importlib.abc.MetaPathFinder):
@@ -201,7 +200,6 @@ def build_wrapper_script(server_py: Path, *, allow_network: bool = False) -> str
                 base = fullname.split(".")[0]
                 if base in _ALLOWED_BASES:
                     return None  # allow normal import
-                # Block everything else
                 raise ImportError(
                     f"Import of '{{fullname}}' is not allowed in sandbox. "
                     f"Allowed top-level modules: {{', '.join(sorted(_ALLOWED_BASES))}}"
@@ -209,13 +207,86 @@ def build_wrapper_script(server_py: Path, *, allow_network: bool = False) -> str
 
         sys.meta_path.insert(0, _SandboxImporter())
 
-        # Provide sandbox dir via env (already set, but make sure it's accessible)
-        _sandbox_dir = os.environ.get("MCP_SANDBOX_DIR", "sandbox")
+        # --- Sandbox filesystem restrictions ---
+        _sandbox_dir = os.path.realpath(os.environ.get("MCP_SANDBOX_DIR", "sandbox"))
         os.makedirs(_sandbox_dir, exist_ok=True)
 
-        # Run the actual server
+        _WRITE_MODES = {{"w", "a", "x", "r+", "w+", "a+", "x+",
+                         "wb", "ab", "xb", "r+b", "w+b", "a+b", "x+b",
+                         "wt", "at", "xt", "r+t", "w+t", "a+t", "x+t"}}
+        _builtin_open = open
+
+        def _sandbox_open(file, mode="r", *args, **kwargs):
+            mode_str = mode.lower().replace(" ", "")
+            if mode_str in _WRITE_MODES:
+                resolved = os.path.realpath(os.path.join(os.getcwd(), str(file)) if not os.path.isabs(str(file)) else str(file))
+                if not resolved.startswith(_sandbox_dir + os.sep) and resolved != _sandbox_dir:
+                    raise PermissionError(
+                        f"Cannot write outside sandbox. "
+                        f"Path '{{file}}' resolves to '{{resolved}}' which is outside '{{_sandbox_dir}}'"
+                    )
+            return _builtin_open(file, mode, *args, **kwargs)
+
+        import builtins
+        builtins.open = _sandbox_open
+
+        import io as _io
+        _builtin_io_open = _io.open
+        def _sandbox_io_open(file, mode="r", *args, **kwargs):
+            mode_str = mode.lower().replace(" ", "")
+            if mode_str in _WRITE_MODES:
+                resolved = os.path.realpath(os.path.join(os.getcwd(), str(file)) if not os.path.isabs(str(file)) else str(file))
+                if not resolved.startswith(_sandbox_dir + os.sep) and resolved != _sandbox_dir:
+                    raise PermissionError(
+                        f"Cannot write outside sandbox. "
+                        f"Path '{{file}}' resolves to '{{resolved}}' which is outside '{{_sandbox_dir}}'"
+                    )
+            return _builtin_io_open(file, mode, *args, **kwargs)
+        _io.open = _sandbox_io_open
+
+        # Restrict os.makedirs, os.mkdir, os.remove, os.unlink, os.rename, os.rmdir
+        def _check_sandbox_path(path, op="write to"):
+            resolved = os.path.realpath(os.path.join(os.getcwd(), str(path)) if not os.path.isabs(str(path)) else str(path))
+            if not resolved.startswith(_sandbox_dir + os.sep) and resolved != _sandbox_dir:
+                raise PermissionError(
+                    f"Cannot {{op}} outside sandbox: '{{path}}'"
+                )
+
+        _os_makedirs = os.makedirs
+        def _sandbox_makedirs(name, *args, **kwargs):
+            _check_sandbox_path(name, "create directory")
+            return _os_makedirs(name, *args, **kwargs)
+        os.makedirs = _sandbox_makedirs
+
+        _os_mkdir = os.mkdir
+        def _sandbox_mkdir(path, *args, **kwargs):
+            _check_sandbox_path(path, "create directory")
+            return _os_mkdir(path, *args, **kwargs)
+        os.mkdir = _sandbox_mkdir
+
+        _os_remove = os.remove
+        def _sandbox_remove(path, *args, **kwargs):
+            _check_sandbox_path(path, "delete")
+            return _os_remove(path, *args, **kwargs)
+        os.remove = _sandbox_remove
+        os.unlink = _sandbox_remove
+
+        _os_rename = os.rename
+        def _sandbox_rename(src, dst, *args, **kwargs):
+            _check_sandbox_path(src, "rename from")
+            _check_sandbox_path(dst, "rename to")
+            return _os_rename(src, dst, *args, **kwargs)
+        os.rename = _sandbox_rename
+
+        _os_rmdir = os.rmdir
+        def _sandbox_rmdir(path, *args, **kwargs):
+            _check_sandbox_path(path, "remove directory")
+            return _os_rmdir(path, *args, **kwargs)
+        os.rmdir = _sandbox_rmdir
+
+        # --- Run the actual server ---
         _server_path = {str(server_py)!r}
-        with open(_server_path, "r") as _f:
+        with _builtin_open(_server_path, "r") as _f:
             _code = _f.read()
         exec(compile(_code, _server_path, "exec"))
     """)
