@@ -97,6 +97,7 @@ class BuiltinToolsConfig:
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     vector_search: VectorSearchConfig = field(default_factory=VectorSearchConfig)
     bash: bool = True
+    mcp_servers: bool = False
 
 
 @dataclass
@@ -116,7 +117,7 @@ class Config:
 def _parse_builtin_tools(raw: dict) -> BuiltinToolsConfig:
     """Parse builtin_tools config, handling nested web_search object."""
     kw = {}
-    for key in ("animation", "memory", "state", "bash"):
+    for key in ("animation", "memory", "state", "bash", "mcp_servers"):
         if key in raw:
             kw[key] = raw[key]
     ws = raw.get("web_search", {})

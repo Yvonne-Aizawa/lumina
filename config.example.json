@@ -53,7 +53,8 @@
       "model": "nomic-embed-text",
       "collection": "memories"
     },
-    "bash": true
+    "bash": true,
+    "mcp_servers": false
   },
   "mcpServers": {}
 }

@@ -2,6 +2,15 @@
 
 from ..config import BuiltinToolsConfig
 from ._bash import handle_run_command
+from ._mcp_servers import (
+    handle_mcp_server_create,
+    handle_mcp_server_delete,
+    handle_mcp_server_edit,
+    handle_mcp_server_list,
+    handle_mcp_server_logs,
+    handle_mcp_server_start,
+    handle_mcp_server_stop,
+)
 from ._memory import (
     handle_memory_create,
     handle_memory_delete,
@@ -98,6 +107,21 @@ async def handle_tool_call(
         return handle_vector_delete(arguments)
     if name == "vector_list":
         return handle_vector_list()
+
+    if name == "mcp_server_create":
+        return await handle_mcp_server_create(arguments, mcp_manager)
+    if name == "mcp_server_edit":
+        return await handle_mcp_server_edit(arguments, mcp_manager)
+    if name == "mcp_server_delete":
+        return await handle_mcp_server_delete(arguments, mcp_manager)
+    if name == "mcp_server_list":
+        return await handle_mcp_server_list(mcp_manager)
+    if name == "mcp_server_start":
+        return await handle_mcp_server_start(arguments, mcp_manager)
+    if name == "mcp_server_stop":
+        return await handle_mcp_server_stop(arguments, mcp_manager)
+    if name == "mcp_server_logs":
+        return await handle_mcp_server_logs(arguments, mcp_manager)
 
     if mcp_manager.has_tool(name):
         return await mcp_manager.call_tool(name, arguments)

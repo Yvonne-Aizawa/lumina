@@ -399,4 +399,161 @@ def get_builtin_tools(
             ]
         )
 
+    # --- MCP server management ---
+    if tc.mcp_servers:
+        tools.extend(
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mcp_server_create",
+                        "description": (
+                            "Create a new MCP server from Python code. The server runs in a sandbox. "
+                            "Write the code using FastMCP:\n"
+                            "```python\n"
+                            "from mcp.server.fastmcp import FastMCP\n"
+                            'mcp = FastMCP("server-name")\n\n'
+                            "@mcp.tool()\n"
+                            "def my_tool(param: str) -> str:\n"
+                            '    """Tool description."""\n'
+                            '    return f"result: {param}"\n\n'
+                            "mcp.run()\n"
+                            "```\n"
+                            "Allowed imports: mcp, json, datetime, math, re, collections, typing, "
+                            "dataclasses, enum, time, string, random, itertools, functools, hashlib, "
+                            "base64, textwrap, uuid, logging, io. "
+                            "For file storage use os.environ['MCP_SANDBOX_DIR'] as the directory path."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Server name (letters, digits, underscores; must start with a letter).",
+                                },
+                                "code": {
+                                    "type": "string",
+                                    "description": "Python source code implementing the MCP server.",
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "Short description of what this server does.",
+                                },
+                                "allow_network": {
+                                    "type": "boolean",
+                                    "description": "Allow network access (socket, urllib, requests, httpx). Default false.",
+                                },
+                                "auto_start": {
+                                    "type": "boolean",
+                                    "description": "Start immediately and on app restart. Default true.",
+                                },
+                            },
+                            "required": ["name", "code", "description"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mcp_server_edit",
+                        "description": "Update the code of an existing AI-created MCP server. Automatically restarts if running.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Server name.",
+                                },
+                                "code": {
+                                    "type": "string",
+                                    "description": "New Python source code.",
+                                },
+                            },
+                            "required": ["name", "code"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mcp_server_delete",
+                        "description": "Delete an AI-created MCP server and all its files.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Server name.",
+                                },
+                            },
+                            "required": ["name"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mcp_server_list",
+                        "description": "List all AI-created MCP servers with their status and tools.",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mcp_server_start",
+                        "description": "Start a stopped AI-created MCP server.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Server name.",
+                                },
+                            },
+                            "required": ["name"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mcp_server_stop",
+                        "description": "Stop a running AI-created MCP server.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Server name.",
+                                },
+                            },
+                            "required": ["name"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mcp_server_logs",
+                        "description": "Get recent stderr output from an AI-created MCP server for debugging.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Server name.",
+                                },
+                                "lines": {
+                                    "type": "integer",
+                                    "description": "Number of recent log lines (default 50, max 200).",
+                                },
+                            },
+                            "required": ["name"],
+                        },
+                    },
+                },
+            ]
+        )
+
     return tools
