@@ -9,3 +9,5 @@ nvidia-cublas-cu12
 brave-search-python-client
 psutil
 openwakeword
+chromadb
+ollama

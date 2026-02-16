@@ -47,6 +47,12 @@
         "api_key": "BSA..."
       }
     },
+    "vector_search": {
+      "enabled": false,
+      "ollama_url": "http://localhost:11434",
+      "model": "nomic-embed-text",
+      "collection": "memories"
+    },
     "bash": true
   },
   "mcpServers": {}

@@ -82,11 +82,20 @@ class WebSearchConfig:
 
 
 @dataclass
+class VectorSearchConfig:
+    enabled: bool = False
+    ollama_url: str = "http://localhost:11434"
+    model: str = "nomic-embed-text"
+    collection: str = "memories"
+
+
+@dataclass
 class BuiltinToolsConfig:
     animation: bool = True
     memory: bool = True
     state: bool = True
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
+    vector_search: VectorSearchConfig = field(default_factory=VectorSearchConfig)
     bash: bool = True
 
 
@@ -119,6 +128,9 @@ def _parse_builtin_tools(raw: dict) -> BuiltinToolsConfig:
             enabled=ws.get("enabled", False),
             brave=ws.get("brave", {}),
         )
+    vs = raw.get("vector_search", {})
+    if isinstance(vs, dict) and vs:
+        kw["vector_search"] = VectorSearchConfig(**vs)
     return BuiltinToolsConfig(**kw)
 
 

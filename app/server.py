@@ -30,6 +30,7 @@ from .heartbeat import record_user_interaction, start_heartbeat
 from .mcp_manager import MCPManager
 from .stt import init_stt, transcribe
 from .stt import is_enabled as stt_is_enabled
+from .tools import init_vector_search
 from .tts import init_tts, synthesize_and_broadcast
 
 logging.basicConfig(level=logging.INFO)
@@ -85,6 +86,7 @@ async def lifespan(app: FastAPI):
     init_tts(config.tts)
     await init_stt(config.stt)
     await wakeword.init_wakeword(config.wakeword)
+    init_vector_search(config.builtin_tools.vector_search)
     heartbeat_task = start_heartbeat(config.heartbeat, chat_handler)
 
     # Mount asset dirs after config is loaded (assets_dir may have changed)

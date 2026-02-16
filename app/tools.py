@@ -8,9 +8,43 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config as _config
-from .config import BuiltinToolsConfig
+from .config import BuiltinToolsConfig, VectorSearchConfig
 
 log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Vector search (ChromaDB + Ollama)
+# ---------------------------------------------------------------------------
+
+_chroma_collection = None
+
+
+def init_vector_search(config: VectorSearchConfig):
+    """Initialize ChromaDB with Ollama embeddings. Call once at startup."""
+    global _chroma_collection
+    if not config.enabled:
+        return
+    try:
+        import chromadb
+        from chromadb.utils.embedding_functions import OllamaEmbeddingFunction
+
+        db_path = _config.STATE_DIR / "vectordb"
+        db_path.mkdir(parents=True, exist_ok=True)
+
+        ef = OllamaEmbeddingFunction(
+            model_name=config.model,
+            url=f"{config.ollama_url.rstrip('/')}",
+        )
+        client = chromadb.PersistentClient(path=str(db_path))
+        _chroma_collection = client.get_or_create_collection(
+            config.collection, embedding_function=ef
+        )
+        log.info(
+            f"Vector search initialized: collection={config.collection}, "
+            f"model={config.model}, entries={_chroma_collection.count()}"
+        )
+    except Exception:
+        log.exception("Failed to initialize vector search")
 
 
 def _memories_dir() -> Path:
@@ -376,6 +410,84 @@ def get_builtin_tools(
             }
         )
 
+    # --- Vector search group ---
+    if tc.vector_search.enabled and _chroma_collection is not None:
+        tools.extend(
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "vector_save",
+                        "description": "Save text to the vector database for semantic search later. Updates the entry if the ID already exists.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "A unique identifier for this entry.",
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "The text content to store and embed.",
+                                },
+                                "metadata": {
+                                    "type": "object",
+                                    "description": 'Optional metadata to attach (e.g. {"topic": "hobbies"}).',
+                                },
+                            },
+                            "required": ["id", "content"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "vector_search",
+                        "description": "Search the vector database by meaning. Returns the most relevant entries for the query.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {
+                                    "type": "string",
+                                    "description": "The search query.",
+                                },
+                                "n": {
+                                    "type": "integer",
+                                    "description": "Number of results to return (default 5).",
+                                },
+                            },
+                            "required": ["query"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "vector_delete",
+                        "description": "Delete an entry from the vector database by ID.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "The ID of the entry to delete.",
+                                },
+                            },
+                            "required": ["id"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "vector_list",
+                        "description": "List all entry IDs in the vector database.",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                },
+            ]
+        )
+
     return tools
 
 
@@ -590,6 +702,97 @@ async def handle_run_command(arguments: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Vector search handlers
+# ---------------------------------------------------------------------------
+
+
+def handle_vector_save(arguments: dict) -> str:
+    if _chroma_collection is None:
+        return "Error: vector search not initialized."
+    entry_id = arguments.get("id", "").strip()
+    content = arguments.get("content", "").strip()
+    if not entry_id:
+        return "Error: id is required."
+    if not content:
+        return "Error: content is required."
+    metadata = arguments.get("metadata") or {}
+    try:
+        _chroma_collection.upsert(
+            ids=[entry_id], documents=[content], metadatas=[metadata]
+        )
+        return f"Saved entry '{entry_id}' to vector database."
+    except Exception as e:
+        return f"Error saving to vector database: {e}"
+
+
+def handle_vector_search(arguments: dict) -> str:
+    if _chroma_collection is None:
+        return "Error: vector search not initialized."
+    query = arguments.get("query", "").strip()
+    if not query:
+        return "Error: query is required."
+    n = min(int(arguments.get("n", 5)), 20)
+    try:
+        if _chroma_collection.count() == 0:
+            return "Vector database is empty."
+        results = _chroma_collection.query(query_texts=[query], n_results=n)
+        ids = results["ids"][0]
+        docs = results["documents"][0]
+        distances = (
+            results["distances"][0] if results.get("distances") else [None] * len(ids)
+        )
+        metadatas = (
+            results["metadatas"][0] if results.get("metadatas") else [{}] * len(ids)
+        )
+        if not ids:
+            return f"No results found for: {query}"
+        lines = []
+        for i, (eid, doc, dist, meta) in enumerate(
+            zip(ids, docs, distances, metadatas), 1
+        ):
+            parts = [
+                f"**{i}. [{eid}]** (distance: {dist:.4f})"
+                if dist is not None
+                else f"**{i}. [{eid}]**"
+            ]
+            if meta:
+                parts.append(f"  metadata: {json.dumps(meta)}")
+            parts.append(f"  {doc}")
+            lines.append("\n".join(parts))
+        return "\n\n".join(lines)
+    except Exception as e:
+        return f"Error searching vector database: {e}"
+
+
+def handle_vector_delete(arguments: dict) -> str:
+    if _chroma_collection is None:
+        return "Error: vector search not initialized."
+    entry_id = arguments.get("id", "").strip()
+    if not entry_id:
+        return "Error: id is required."
+    try:
+        _chroma_collection.delete(ids=[entry_id])
+        return f"Deleted entry '{entry_id}' from vector database."
+    except Exception as e:
+        return f"Error deleting from vector database: {e}"
+
+
+def handle_vector_list() -> str:
+    if _chroma_collection is None:
+        return "Error: vector search not initialized."
+    try:
+        result = _chroma_collection.get()
+        ids = result["ids"]
+        if not ids:
+            return "Vector database is empty."
+        return f"Vector database entries ({len(ids)}):\n" + "\n".join(
+            f"- {eid}" for eid in sorted(ids)
+        )
+    except Exception as e:
+        return f"Error listing vector database: {e}"
+
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
@@ -658,6 +861,15 @@ async def handle_tool_call(
         return await handle_web_search(arguments, tc.web_search.brave_api_key)
     if name == "run_command":
         return await handle_run_command(arguments)
+
+    if name == "vector_save":
+        return handle_vector_save(arguments)
+    if name == "vector_search":
+        return handle_vector_search(arguments)
+    if name == "vector_delete":
+        return handle_vector_delete(arguments)
+    if name == "vector_list":
+        return handle_vector_list()
 
     if mcp_manager.has_tool(name):
         return await mcp_manager.call_tool(name, arguments)
