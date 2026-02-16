@@ -3,6 +3,10 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="theme-color" content="#1a1a2e" />
+        <link rel="manifest" href="/static/manifest.json" />
+        <link rel="icon" href="/static/icon-192.png" />
+        <link rel="apple-touch-icon" href="/static/icon-192.png" />
         <title>Memory Manager</title>
         <link rel="stylesheet" href="/static/css/style.css" />
     </head>
@@ -28,8 +32,12 @@
                         <span id="detail-id"></span>
                         <div id="detail-actions">
                             <button id="detail-save" title="Save">Save</button>
-                            <button id="detail-delete" title="Delete">Delete</button>
-                            <button id="detail-close" title="Close">&times;</button>
+                            <button id="detail-delete" title="Delete">
+                                Delete
+                            </button>
+                            <button id="detail-close" title="Close">
+                                &times;
+                            </button>
                         </div>
                     </div>
                     <div id="detail-meta"></div>
