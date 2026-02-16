@@ -7,7 +7,8 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from .broadcast import broadcast
+from .broadcast import broadcast, set_expression
+from .emotion import detect_emotion
 from .tts import synthesize_and_broadcast
 
 if TYPE_CHECKING:
@@ -47,6 +48,9 @@ async def _heartbeat_loop(chat_handler):
             if sent:
                 for text in sent:
                     log.info(f"Heartbeat message: {text[:100]}")
+                    expression = await detect_emotion(text)
+                    if expression:
+                        await set_expression(expression)
                     await broadcast({"action": "chat", "content": text})
                     await synthesize_and_broadcast(text)
                 heartbeat_waiting_for_user = True

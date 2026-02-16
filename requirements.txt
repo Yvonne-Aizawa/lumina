@@ -11,3 +11,5 @@ psutil
 openwakeword
 chromadb
 ollama
+transformers
+torch

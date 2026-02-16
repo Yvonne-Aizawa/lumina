@@ -1,5 +1,6 @@
 import { getToken } from "./auth.js";
 import { playAnimationByName } from "./animations.js";
+import { setExpression } from "./expression.js";
 import { addMessage, addToolCall } from "./chat.js";
 import { setBackgroundImage } from "./scene.js";
 import {
@@ -39,6 +40,8 @@ function connectWebSocket() {
         addToolCall(msg.name, msg.arguments);
       } else if (msg.action === "set_background" && msg.filename) {
         setBackgroundImage(msg.filename);
+      } else if (msg.action === "expression" && msg.expression) {
+        setExpression(msg.expression);
       } else if (msg.action === "wakeword_detected") {
         onWakeWordDetected(msg.keyword, msg.score);
       } else if (msg.action === "audio" && msg.data) {

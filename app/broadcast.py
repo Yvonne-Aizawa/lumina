@@ -62,6 +62,11 @@ async def set_background(name: str):
         await broadcast({"action": "set_background", "filename": filename})
 
 
+async def set_expression(expression: str):
+    """Send an expression change command to all connected browsers."""
+    await broadcast({"action": "expression", "expression": expression})
+
+
 async def notify_tool_call(name: str, arguments: dict):
     """Broadcast a tool call notification to all connected browsers."""
     await broadcast({"action": "tool_call", "name": name, "arguments": arguments})

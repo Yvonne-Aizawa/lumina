@@ -9,6 +9,7 @@ import {
   setMixer,
   setVRM,
 } from "./animations.js";
+import { setVRM as setExpressionVRM, updateExpression } from "./expression.js";
 import { connectWebSocket } from "./websocket.js";
 import { initChat } from "./chat.js";
 import { initSettings } from "./settings.js";
@@ -46,6 +47,7 @@ if (!authed) {
       mixer = new THREE.AnimationMixer(vrm.scene);
       setMixer(mixer);
       setVRM(vrm);
+      setExpressionVRM(vrm);
 
       // Preload Idle animation, others load on demand
       const idleClip = await ensureAnimation("Idle");
@@ -102,6 +104,9 @@ function animate() {
       currentVRM.expressionManager.setValue("blink", 1);
     }
   }
+
+  // Facial expression transitions
+  updateExpression(delta);
 
   if (currentVRM) currentVRM.update(delta);
   controls.update();

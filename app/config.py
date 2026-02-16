@@ -67,6 +67,11 @@ class BashConfig:
 
 
 @dataclass
+class EmotionConfig:
+    enabled: bool = False
+
+
+@dataclass
 class WebSearchConfig:
     enabled: bool = False
     brave: dict = field(default_factory=dict)
@@ -112,6 +117,7 @@ class Config:
     auth: AuthConfig = field(default_factory=AuthConfig)
     bash: BashConfig = field(default_factory=BashConfig)
     builtin_tools: BuiltinToolsConfig = field(default_factory=BuiltinToolsConfig)
+    emotion: EmotionConfig = field(default_factory=EmotionConfig)
     mcp_servers: dict[str, dict] = field(default_factory=dict)
     background: str | None = None
 
@@ -168,6 +174,7 @@ def load_config() -> Config:
         auth=AuthConfig(**raw.get("auth", {})),
         bash=BashConfig(**raw.get("bash", {})),
         builtin_tools=_parse_builtin_tools(raw.get("builtin_tools", {})),
+        emotion=EmotionConfig(**raw.get("emotion", {})),
         mcp_servers=raw.get("mcp_servers") or raw.get("mcpServers") or {},
         background=raw.get("background"),
     )

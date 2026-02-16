@@ -23,9 +23,11 @@ from .broadcast import (
     notify_tool_call,
     play_animation,
     set_background,
+    set_expression,
 )
 from .chat import ChatHandler
 from .config import PROJECT_DIR, Config, load_config
+from .emotion import detect_emotion, init_emotion
 from .heartbeat import record_user_interaction, start_heartbeat
 from .mcp_manager import MCPManager
 from .stt import init_stt, transcribe
@@ -73,8 +75,8 @@ async def lifespan(app: FastAPI):
         builtin_tools_config=config.builtin_tools,
     )
 
-    log.info(f"Available animations: {list_animations()}")
-    log.info(f"Available backgrounds: {backgrounds}")
+    # log.info(f"Available animations: {list_animations()}")
+    # log.info(f"Available backgrounds: {backgrounds}")
     log.info(
         f"MCP tools: {[t['function']['name'] for t in mcp_manager.get_openai_tools()]}"
     )
@@ -88,6 +90,7 @@ async def lifespan(app: FastAPI):
     await init_stt(config.stt)
     await wakeword.init_wakeword(config.wakeword)
     init_vector_search(config.builtin_tools.vector_search)
+    init_emotion(config.emotion)
     if config.builtin_tools.mcp_servers:
         await start_servers_from_manifest(mcp_manager)
     heartbeat_task = start_heartbeat(config.heartbeat, chat_handler)
@@ -165,6 +168,9 @@ async def api_chat(req: ChatRequest):
     try:
         response = await chat_handler.send_message(req.message)
         if response:
+            expression = await detect_emotion(response)
+            if expression:
+                await set_expression(expression)
             await synthesize_and_broadcast(response)
         return {"response": response}
     except Exception as e:
