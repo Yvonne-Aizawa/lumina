@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Memory Manager</title>
+        <link rel="stylesheet" href="/static/css/style.css" />
+    </head>
+    <body class="memory-page">
+        <div id="memory-app">
+            <div id="memory-header">
+                <a href="/" id="memory-back" title="Back to chat">&larr;</a>
+                <h1>Memory Manager</h1>
+                <span id="memory-count"></span>
+            </div>
+            <div id="memory-toolbar">
+                <input
+                    id="memory-search"
+                    type="text"
+                    placeholder="Search memories..."
+                    autocomplete="off"
+                />
+            </div>
+            <div id="memory-content">
+                <div id="memory-list"></div>
+                <div id="memory-detail" class="hidden">
+                    <div id="detail-header">
+                        <span id="detail-id"></span>
+                        <div id="detail-actions">
+                            <button id="detail-save" title="Save">Save</button>
+                            <button id="detail-delete" title="Delete">Delete</button>
+                            <button id="detail-close" title="Close">&times;</button>
+                        </div>
+                    </div>
+                    <div id="detail-meta"></div>
+                    <textarea id="detail-content"></textarea>
+                    <div id="detail-status"></div>
+                </div>
+            </div>
+        </div>
+        <div id="login-overlay" class="hidden">
+            <form id="login-form">
+                <h2>Authentication</h2>
+                <input
+                    id="login-key"
+                    type="password"
+                    placeholder="API Key"
+                    autocomplete="off"
+                />
+                <button type="submit">Login</button>
+                <div id="login-error"></div>
+            </form>
+        </div>
+        <script type="module" src="/static/js/memory.js"></script>
+    </body>
+</html>

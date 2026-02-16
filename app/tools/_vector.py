@@ -25,7 +25,7 @@ def init_vector_search(config: VectorSearchConfig):
 
         ef = OllamaEmbeddingFunction(
             model_name=config.model,
-            url=f"{config.ollama_url.rstrip('/')}/api/embed",
+            url=config.ollama_url.rstrip("/"),
         )
         client = chromadb.PersistentClient(path=str(db_path))
         _chroma_collection = client.get_or_create_collection(
@@ -53,10 +53,12 @@ def handle_vector_save(arguments: dict) -> str:
         return "Error: id is required."
     if not content:
         return "Error: content is required."
-    metadata = arguments.get("metadata") or {}
+    metadata = arguments.get("metadata") or None
     try:
         _chroma_collection.upsert(
-            ids=[entry_id], documents=[content], metadatas=[metadata]
+            ids=[entry_id],
+            documents=[content],
+            metadatas=[metadata] if metadata else None,
         )
         return f"Saved entry '{entry_id}' to vector database."
     except Exception as e:
