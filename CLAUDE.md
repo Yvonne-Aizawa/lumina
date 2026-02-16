@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Lumina** — AI chatbot with a 3D VRM avatar. FastAPI backend controls a Three.js browser frontend via WebSocket. The LLM can trigger character animations, manage persistent memories, and use external tools via MCP servers. Features include TTS (GPT-SoVITS), STT (faster-whisper), server-side wake word detection (openwakeword), and a background heartbeat system for proactive AI messages.
+**Lumina** — AI chatbot with a 3D VRM avatar. FastAPI backend controls a Three.js browser frontend via WebSocket. The LLM can trigger character animations, manage persistent memories, store embeddings in a vector database, create its own sandboxed MCP tool servers, and use external tools via MCP servers. Features include TTS (GPT-SoVITS), STT (faster-whisper), server-side wake word detection (openwakeword), and a background heartbeat system for proactive AI messages.
 
 ## Running the Project
 
@@ -27,11 +27,11 @@ No tests or linting are configured.
 
 **`server.py`** — Thin launcher. Imports the FastAPI app from `app/server.py` and runs uvicorn.
 
-**`app/server.py`** — FastAPI app, lifespan orchestrator, and route handlers. The lifespan function calls init functions from the subsystem modules below. Routes: `/` (frontend), `/api/chat` (POST), `/api/animations` (GET), `/api/play/{name}` (POST), `/api/chat/clear` (POST), `/api/chats` (GET), `/api/chats/new` (POST), `/api/chats/load` (POST), `/api/stt/status` (GET), `/api/transcribe` (POST), `/ws` (WebSocket). Auth routes are mounted from `app/auth.py`. All API routes use `Depends(require_auth)`; WebSocket checks token via query param; static files and `/`, `/api/auth/*` are unprotected.
+**`app/server.py`** — FastAPI app, lifespan orchestrator, and route handlers. The lifespan function calls init functions from the subsystem modules below. Routes: `/` (frontend), `/memory` (vector DB manager), `/api/chat` (POST), `/api/animations` (GET), `/api/backgrounds` (GET), `/api/play/{name}` (POST), `/api/chat/clear` (POST), `/api/chats` (GET/POST), `/api/stt/status` (GET), `/api/transcribe` (POST), `/api/vector` (CRUD), `/ws` (WebSocket). Auth routes are mounted from `app/auth.py`. All API routes use `Depends(require_auth)`; WebSocket checks token via query param; static files, `/`, `/memory`, and `/api/auth/*` are unprotected.
 
-**`app/config.py`** — Path constants (`PROJECT_DIR`, `ASSETS_DIR`, `ANIMS_DIR`, `MODELS_DIR`, `STATE_DIR`, `VRM_MODEL`, `CONFIG_PATH`) and `load_config()`. Paths are overridable via `state_dir`, `assets_dir`, and `vrm_model` in config.json.
+**`app/config.py`** — Path constants (`PROJECT_DIR`, `ASSETS_DIR`, `ANIMS_DIR`, `MODELS_DIR`, `STATE_DIR`, `VRM_MODEL`, `CONFIG_PATH`) and `load_config()`. Paths are overridable via `state_dir`, `assets_dir`, and `vrm_model` in config.json. Configuration uses dataclasses: `BuiltinToolsConfig` has nested `WebSearchConfig` and `VectorSearchConfig`.
 
-**`app/broadcast.py`** — WebSocket client list and `broadcast()` for sending JSON to all connected browsers. Also contains animation helpers: `list_animations()`, `play_animation()`, `notify_tool_call()`.
+**`app/broadcast.py`** — WebSocket client list and `broadcast()` for sending JSON to all connected browsers. Also contains animation/background helpers: `list_animations()`, `list_backgrounds()`, `play_animation()`, `set_background()`, `notify_tool_call()`.
 
 **`app/tts.py`** — TTS client. `init_tts(config)` loads settings, `synthesize_and_broadcast(text)` calls GPT-SoVITS and broadcasts base64 audio via WebSocket.
 
@@ -43,30 +43,42 @@ No tests or linting are configured.
 
 **`app/chat.py`** — Chat handler. Manages conversation history, LLM calls via OpenAI SDK, and tool execution loop (up to `MAX_TOOL_ROUNDS=10` iterations). The system prompt is built from `state/soul/` markdown files (excluding `heartbeat.md`), loaded once at init. Has a separate `heartbeat()` method for background prompts. An `asyncio.Lock` protects `_messages` for concurrency safety.
 
-**`app/tools.py`** — Tool definitions and handlers. Built-in tools are grouped and individually toggleable via `builtin_tools` in config: **animation** (`get_animations`, `play_animation`, `get_backgrounds`, `set_background`), **memory** (`memory_create/read/edit/patch/delete/list`), **state** (`state_set/get/list/check_time`), **web_search** (`web_search` via Brave Search), **bash** (`run_command`). The `get_animations`/`get_backgrounds` tools return available names on demand (not embedded in tool schemas) to save tokens. Also routes to MCP tools. `memory_patch` does string replacement (rejects if old_string matches 0 or >1 times). Memory changes are automatically git-committed.
+**`app/tools/`** — Tool definitions and handlers, split into modules:
+- `__init__.py` — Re-exports: `get_builtin_tools`, `handle_tool_call`, `init_vector_search`, `start_servers_from_manifest`
+- `_definitions.py` — `get_builtin_tools()` returns all tool schemas in OpenAI function-calling format, gated by `BuiltinToolsConfig`
+- `_dispatch.py` — `handle_tool_call()` central dispatcher. Checks built-in tools first, then falls through to `mcp_manager.call_tool()`
+- `_common.py` — Shared helpers: `memories_dir()`, `state_path()`, `safe_filename()`, `git_commit()`
+- `_memory.py` — Memory CRUD: `handle_memory_create/read/edit/delete/patch/list`. `memory_patch` does string replacement (rejects if old_string matches 0 or >1 times). Changes are automatically git-committed
+- `_state.py` — Persistent key-value store: `handle_state_set/get/list/check_time`
+- `_web_search.py` — Brave Search: `handle_web_search`
+- `_bash.py` — Shell commands: `handle_run_command`
+- `_vector.py` — ChromaDB + Ollama embeddings: `init_vector_search`, `get_collection()`, `handle_vector_save/search/delete/list`
+- `_mcp_servers.py` — AI-created MCP server management: `handle_mcp_server_create/edit/delete/list/start/stop/logs`, `start_servers_from_manifest()`
 
-**`app/auth.py`** — Token-based API authentication. `init_auth(config)` loads settings. `require_auth` is a FastAPI dependency added to all protected routes — extracts `Authorization: Bearer <token>` and validates against the configured API key using `hmac.compare_digest()`. `require_ws_auth(websocket)` checks token from `?token=` query param. Routes: `POST /api/auth/login`, `GET /api/auth/check`, `GET /api/auth/status`. No-ops when auth is disabled.
+**`app/sandbox.py`** — Sandbox utilities for AI-created MCP servers. AST-based code validation (`validate_code()`) blocks dangerous imports/calls/dunder attributes. `build_wrapper_script()` generates a Python script that installs a runtime import hook before executing the server. `build_sandbox_env()` builds a minimal environment dict.
 
-**`app/mcp_manager.py`** — MCP client manager. Connects to configured MCP servers via stdio on startup, discovers their tools, converts tool schemas to OpenAI function-calling format, and routes tool calls to the correct server session.
+**`app/mcp_manager.py`** — MCP client manager. Connects to configured MCP servers via stdio on startup, discovers their tools, converts tool schemas to OpenAI function-calling format, and routes tool calls to the correct server session. Also manages AI-created servers with `start_ai_server()`/`stop_ai_server()` — each runs in a sandboxed subprocess with stderr captured to a log file.
+
+**`app/auth.py`** — Token-based API authentication. `require_auth` is a FastAPI dependency. `require_ws_auth(websocket)` checks token from `?token=` query param. No-ops when auth is disabled.
 
 **`static/`** — Frontend ES modules served via FastAPI's StaticFiles mount:
-- `auth.js` — Auth module. `getToken()`/`setToken()`/`clearToken()` manage localStorage. `authFetch()` wraps `fetch()` with Bearer token header (shows login on 401). `checkAuth()` gates app init behind auth validation.
-- `app.js` — Entry point. Auth gate via `checkAuth()`, then loads VRM, starts render loop (with random blinking), initializes chat and wake word.
+- `auth.js` — Auth module. `authFetch()` wraps `fetch()` with Bearer token. `checkAuth()` gates app init. `initAuth()` wires up login form.
+- `app.js` — Entry point. Auth gate, then loads VRM, starts render loop (with random blinking), initializes chat and wake word.
 - `scene.js` — Three.js scene, camera, lighting, and renderer setup.
-- `animations.js` — Mixamo FBX-to-VRM retargeting. Crossfade blending between animations (0.3s transitions).
-- `websocket.js` — Auto-reconnecting WebSocket for animation playback, heartbeat, TTS audio playback, and wake word detection events. Exports `getWebSocket()` for the wakeword module to send binary audio. Pauses/resumes wake word during audio. Triggers auto-listen window after TTS playback. Appends `?token=...` for auth. Background tabs skip audio playback (`document.hidden`).
-- `chat.js` — Chat UI, push-to-talk mic recording, sends audio to `/api/transcribe`. `sendMessage()` is exported for use by other modules (wake word). All fetch calls use `authFetch()`. Assistant messages are rendered as markdown via `marked.js` (CDN).
-- `wakeword.js` — Streams mic audio to server for wake word detection. AudioWorklet resamples to 16kHz Int16 PCM and sends binary frames over WebSocket. On server detection event: records speech via MediaRecorder, transcribes via `/api/transcribe`, sends through chat. Sends pause/resume control messages during TTS playback. Auto-listen window (5s) after TTS ends if last input was voice. Voice status indicator: listening/recording/transcribing/playing states.
-- `settings.js` — Settings panel with tool call toggle, hide UI button, chat history management.
-
-**`assets/wakeword/models/`** — ONNX keyword model files used by server-side openwakeword.
+- `animations.js` — Mixamo FBX-to-VRM retargeting with crossfade blending (0.3s transitions).
+- `websocket.js` — Auto-reconnecting WebSocket for animations, heartbeat, TTS audio, and wake word events. Pauses/resumes wake word during audio. Background tabs skip audio playback.
+- `chat.js` — Chat UI, push-to-talk mic recording. `sendMessage()` exported for wake word module. Markdown rendering via `marked.js` (CDN).
+- `wakeword.js` — AudioWorklet resamples to 16kHz Int16 PCM, streams over WebSocket. Auto-listen window after TTS. Voice status indicator.
+- `settings.js` — Settings panel with tool call toggle, hide UI, chat history management.
+- `memory.js` — Vector DB memory manager UI. Uses `authFetch`, client-side search filtering, edit/delete with Ctrl+S save.
+- `memory.html` — Standalone page for `/memory` route.
 
 ## Key Data Flow
 
 ```
 Browser chat input → POST /api/chat → ChatHandler.send_message()
   → LLM (OpenAI-compatible API) with tools
-  → tool calls (animation/memory/state/MCP) executed in loop
+  → tool calls (animation/memory/state/vector/MCP) executed in loop
   → final text response returned to browser
   → TTS audio broadcast via WebSocket to all clients
   → animations triggered via WebSocket broadcast
@@ -82,8 +94,6 @@ Browser AudioWorklet → 16kHz Int16 PCM → WebSocket binary frames
   → faster-whisper transcribes in-process → text returned
   → auto-sent through normal chat flow
 ```
-
-Push-to-talk (Mic button) follows the same `/api/transcribe` path but is manually triggered.
 
 ### Heartbeat Flow
 
@@ -111,16 +121,15 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
   },
   "stt": {                          // Optional: faster-whisper speech-to-text
     "enabled": false,
-    "model": "large-v3",            // Whisper model size
-    "device": "cuda",               // "cuda", "cpu", or "auto"
-    "compute_type": "float16",      // "float16", "int8", etc.
-    "language": "en"                // Force language (omit for auto-detect)
+    "model": "large-v3",
+    "device": "auto",               // "cuda", "cpu", or "auto"
+    "compute_type": "float16",
+    "language": "en"
   },
   "wakeword": {                     // Optional: server-side wake word detection
     "enabled": false,
-    "keyword": "hey_jarvis",        // Must match a model in assets/wakeword/models/
-    "model_file": "custom.onnx",    // Optional: override model filename
-    "auto_start": false             // Auto-enable wake word, hide wake button
+    "keyword": "hey_jarvis",
+    "auto_start": false
   },
   "tts": {                          // Optional: GPT-SoVITS text-to-speech
     "enabled": false,
@@ -132,33 +141,39 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
   },
   "heartbeat": {                     // Optional: proactive messages
     "enabled": false,
-    "interval": 600,                 // seconds between heartbeat checks
-    "idle_threshold": 1200           // seconds of user inactivity before triggering
+    "interval": 600,
+    "idle_threshold": 1200
   },
   "auth": {                           // Optional: API authentication
     "enabled": false,
-    "api_key": "your-secret-key"     // Shared secret for all clients
-  },
-  "bash": {                           // Optional: allow LLM to run shell commands
-    "enabled": false
+    "api_key": "your-secret-key"
   },
   "builtin_tools": {                 // Optional: toggle built-in tool groups
-    "animation": true,               // play_animation, set_background, get_*
-    "memory": true,                  // memory_create/read/edit/patch/delete/list
-    "state": true,                   // state_set/get/list/check_time
-    "web_search": {                  // web_search tool
+    "animation": true,
+    "memory": true,
+    "memory_readonly": false,        // true = only memory_read/list, no write tools
+    "state": true,
+    "web_search": {
       "enabled": false,
-      "brave": {                     // Brave Search provider
+      "brave": {
         "enabled": false,
         "api_key": "BSA..."
       }
     },
-    "bash": true                     // run_command (also requires bash.enabled)
+    "vector_search": {               // ChromaDB + Ollama embeddings
+      "enabled": false,
+      "ollama_url": "http://localhost:11434",
+      "model": "nomic-embed-text",
+      "collection": "memories"
+    },
+    "bash": true,                    // run_command (also requires top-level bash.enabled)
+    "mcp_servers": false             // AI-created sandboxed MCP servers
   },
+  "bash": { "enabled": false },
   "state_dir": "/custom/path/to/state",   // Optional: override state directory
   "assets_dir": "/custom/path/to/assets", // Optional: override assets directory
   "vrm_model": "avatar.vrm",              // Optional: override VRM model filename
-  "mcpServers": {                    // Optional: MCP tool servers
+  "mcpServers": {                    // Optional: external MCP tool servers
     "server-name": {
       "command": "...",
       "args": [],
@@ -174,15 +189,25 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
 
 **`state/state.json`** — Persistent key-value state store managed by the LLM via `state_*` tools.
 
+**`state/vectordb/`** — ChromaDB persistent storage (when vector_search is enabled). Uses Ollama for embeddings.
+
+**`state/mcp_servers/`** — AI-created MCP servers (when mcp_servers is enabled). Each server gets a subdirectory with `server.py`, `_wrapper.py`, `sandbox/`, and `stderr.log`. `manifest.json` tracks server metadata and auto-start preferences.
+
+## AI-Created MCP Servers
+
+When `builtin_tools.mcp_servers` is enabled, the AI can create Python MCP tool servers at runtime using `mcp_server_create`. Servers use `mcp.server.fastmcp.FastMCP` (from the `mcp` package) and run in sandboxed subprocesses.
+
+**Sandboxing (3 layers):**
+1. AST validation (`app/sandbox.py:validate_code`) — blocks dangerous imports (`os`, `subprocess`, `shutil`, etc.), calls (`eval`, `exec`, `__import__`), and dunder attribute access
+2. Runtime import hook — `sys.meta_path` finder injected via wrapper script blocks non-allowed modules
+3. Process isolation — Python `-I` flag, minimal environment, `cwd` restricted to server directory
+
+Allowed imports: `mcp`, `json`, `datetime`, `math`, `re`, `collections`, `typing`, `dataclasses`, `enum`, `time`, `string`, `random`, `itertools`, `functools`, `hashlib`, `base64`, `textwrap`, `uuid`, `logging`, `io`, and more safe stdlib. Network modules require `allow_network=true`. Servers access per-server file storage via `os.environ["MCP_SANDBOX_DIR"]`.
+
 ## Docker
 
 ```bash
-# Build and run with docker-compose (GPU)
 docker compose up --build
-
-# Run CPU-only (no STT)
-docker compose up --build
-# (remove the deploy.resources section from docker-compose.yml)
 ```
 
 `Dockerfile` uses `nvidia/cuda:12.4.1-runtime-ubuntu22.04` with Python 3.12 and Node.js 22. Runtime data (`config.json`, `assets/`, `state/`) is bind-mounted, not baked into the image.
@@ -190,10 +215,6 @@ docker compose up --build
 ## Adding Animations
 
 Drop Mixamo FBX files (exported as **FBX Binary**, **Without Skin**) into `assets/anims/` and restart. The filename stem becomes the animation name. VRM model files go in `assets/models/`.
-
-## Adding Wake Word Models
-
-Drop `.onnx` keyword model files into `assets/wakeword/models/` and set `wakeword.keyword` in `config.json` — the model file defaults to `{keyword}.onnx`. Optionally set `wakeword.model_file` to override the filename.
 
 ## Animation Retargeting
 
@@ -205,5 +226,5 @@ Mixamo FBX animations are retargeted to VRM in the browser. `loadMixamoAnimation
 
 ## Dependencies
 
-- **Python:** fastapi, uvicorn[standard], openai, mcp, httpx, faster-whisper, nvidia-cublas-cu12, brave-search-python-client, psutil, openwakeword
+- **Python:** fastapi, uvicorn[standard], openai, mcp, httpx, chromadb, ollama, faster-whisper, nvidia-cublas-cu12, brave-search-python-client, psutil, openwakeword
 - **Browser (CDN):** three.js 0.162.0, @pixiv/three-vrm 3.3.2, marked.js
