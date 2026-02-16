@@ -39,6 +39,7 @@
   "builtin_tools": {
     "animation": true,
     "memory": true,
+    "memory_readonly": false,
     "state": true,
     "web_search": {
       "enabled": false,

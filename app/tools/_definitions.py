@@ -84,29 +84,9 @@ def get_builtin_tools(
 
     # --- Memory group ---
     if tc.memory:
+        # Read-only tools always available
         tools.extend(
             [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "memory_create",
-                        "description": "Create a new memory as a markdown file. Use this to remember important information about the user or conversations.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "filename": {
-                                    "type": "string",
-                                    "description": "Name for the memory file (without .md extension).",
-                                },
-                                "content": {
-                                    "type": "string",
-                                    "description": "Markdown content to write to the memory file.",
-                                },
-                            },
-                            "required": ["filename", "content"],
-                        },
-                    },
-                },
                 {
                     "type": "function",
                     "function": {
@@ -127,69 +107,6 @@ def get_builtin_tools(
                 {
                     "type": "function",
                     "function": {
-                        "name": "memory_edit",
-                        "description": "Edit an existing memory file by replacing its content.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "filename": {
-                                    "type": "string",
-                                    "description": "Name of the memory file to edit (without .md extension).",
-                                },
-                                "content": {
-                                    "type": "string",
-                                    "description": "New markdown content for the memory file.",
-                                },
-                            },
-                            "required": ["filename", "content"],
-                        },
-                    },
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "memory_delete",
-                        "description": "Delete a memory file.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "filename": {
-                                    "type": "string",
-                                    "description": "Name of the memory file to delete (without .md extension).",
-                                },
-                            },
-                            "required": ["filename"],
-                        },
-                    },
-                },
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "memory_patch",
-                        "description": "Patch a memory file by replacing a specific substring with new text. Use this for small edits instead of rewriting the whole file.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "filename": {
-                                    "type": "string",
-                                    "description": "Name of the memory file to patch (without .md extension).",
-                                },
-                                "old_string": {
-                                    "type": "string",
-                                    "description": "The exact text to find and replace.",
-                                },
-                                "new_string": {
-                                    "type": "string",
-                                    "description": "The text to replace it with.",
-                                },
-                            },
-                            "required": ["filename", "old_string", "new_string"],
-                        },
-                    },
-                },
-                {
-                    "type": "function",
-                    "function": {
                         "name": "memory_list",
                         "description": "List all saved memory files by name.",
                         "parameters": {
@@ -200,6 +117,96 @@ def get_builtin_tools(
                 },
             ]
         )
+        # Write tools only when not read-only
+        if not tc.memory_readonly:
+            tools.extend(
+                [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "memory_create",
+                            "description": "Create a new memory as a markdown file. Use this to remember important information about the user or conversations.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "filename": {
+                                        "type": "string",
+                                        "description": "Name for the memory file (without .md extension).",
+                                    },
+                                    "content": {
+                                        "type": "string",
+                                        "description": "Markdown content to write to the memory file.",
+                                    },
+                                },
+                                "required": ["filename", "content"],
+                            },
+                        },
+                    },
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "memory_edit",
+                            "description": "Edit an existing memory file by replacing its content.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "filename": {
+                                        "type": "string",
+                                        "description": "Name of the memory file to edit (without .md extension).",
+                                    },
+                                    "content": {
+                                        "type": "string",
+                                        "description": "New markdown content for the memory file.",
+                                    },
+                                },
+                                "required": ["filename", "content"],
+                            },
+                        },
+                    },
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "memory_delete",
+                            "description": "Delete a memory file.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "filename": {
+                                        "type": "string",
+                                        "description": "Name of the memory file to delete (without .md extension).",
+                                    },
+                                },
+                                "required": ["filename"],
+                            },
+                        },
+                    },
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "memory_patch",
+                            "description": "Patch a memory file by replacing a specific substring with new text. Use this for small edits instead of rewriting the whole file.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "filename": {
+                                        "type": "string",
+                                        "description": "Name of the memory file to patch (without .md extension).",
+                                    },
+                                    "old_string": {
+                                        "type": "string",
+                                        "description": "The exact text to find and replace.",
+                                    },
+                                    "new_string": {
+                                        "type": "string",
+                                        "description": "The text to replace it with.",
+                                    },
+                                },
+                                "required": ["filename", "old_string", "new_string"],
+                            },
+                        },
+                    },
+                ]
+            )
 
     # --- State group ---
     if tc.state:
