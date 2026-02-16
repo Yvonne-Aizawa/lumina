@@ -70,14 +70,13 @@ canvas {
     bottom: 32px;
     left: 50%;
     transform: translateX(-50%);
-    /*width: 500px;*/
-    max-width: 90vw;
+    width: 50%;
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 #chat-messages {
-    /*max-height: 300px;*/
+    max-height: 50vh;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -311,6 +310,23 @@ canvas {
     cursor: pointer;
 }
 #hide-ui-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+#memory-btn {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-family: sans-serif;
+    font-size: 14px;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+}
+#memory-btn:hover {
     background: rgba(255, 255, 255, 0.2);
 }
 body.ui-hidden #chat-container,
@@ -694,8 +710,14 @@ body.ui-hidden #settings-btn {
     color: rgba(239, 68, 68, 0.9);
 }
 
-/* Responsive: stack on narrow screens */
+/* Responsive: mobile chat */
 @media (max-width: 640px) {
+    #chat-container {
+        width: 100%;
+        bottom: 0;
+        padding: 0 8px env(safe-area-inset-bottom, 8px);
+        position: fixed;
+    }
     #memory-content {
         flex-direction: column;
     }
