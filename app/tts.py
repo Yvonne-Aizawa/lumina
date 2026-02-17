@@ -60,7 +60,7 @@ async def _synthesize_gptsovits(text: str):
             resp = await client.post(
                 f"{tts_config.base_url}/tts",
                 json={
-                    "text": text,
+                    "text": text.lower(),
                     "text_lang": tts_config.text_lang,
                     "ref_audio_path": tts_config.ref_audio_path,
                     "prompt_text": tts_config.prompt_text,
