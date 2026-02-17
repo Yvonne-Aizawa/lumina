@@ -72,12 +72,28 @@ if (!authed) {
   initWakeWord().catch((e) => console.warn("Wake word init failed:", e));
 } // end auth gate
 
-// Resize handler
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+// Resize handler (layout-aware)
+function updateRendererSize() {
+  const isSplit = document.body.classList.contains("layout-split");
+  const w = isSplit ? Math.floor(window.innerWidth / 2) : window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+  renderer.setSize(w, h);
+  const canvas = renderer.domElement;
+  if (isSplit) {
+    canvas.style.position = "absolute";
+    canvas.style.right = "0";
+    canvas.style.left = "auto";
+    canvas.style.top = "0";
+  } else {
+    canvas.style.position = "";
+    canvas.style.right = "";
+    canvas.style.left = "";
+    canvas.style.top = "";
+  }
+}
+window.addEventListener("resize", updateRendererSize);
 
 // Random blink state
 let blinkTime = 0;

@@ -14,6 +14,7 @@ const toolcallCheckbox = document.getElementById("setting-toolcalls");
 const newChatBtn = document.getElementById("new-chat-btn");
 const hideUiBtn = document.getElementById("hide-ui-btn");
 const chatList = document.getElementById("chat-list");
+const layoutCheckbox = document.getElementById("setting-layout");
 
 let currentSessionId = null;
 
@@ -128,6 +129,22 @@ function initSettings() {
   });
 
   newChatBtn.addEventListener("click", newChat);
+
+  // Layout toggle
+  const isSplit = localStorage.getItem("layout") === "split";
+  layoutCheckbox.checked = isSplit;
+  if (isSplit) {
+    document.body.classList.add("layout-split");
+    window.dispatchEvent(new Event("resize"));
+  }
+  layoutCheckbox.addEventListener("change", () => {
+    document.body.classList.toggle("layout-split", layoutCheckbox.checked);
+    localStorage.setItem(
+      "layout",
+      layoutCheckbox.checked ? "split" : "default",
+    );
+    window.dispatchEvent(new Event("resize"));
+  });
 
   hideUiBtn.addEventListener("click", (e) => {
     e.stopPropagation();

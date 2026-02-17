@@ -230,6 +230,7 @@ canvas {
 #settings-btn:hover {
     background: rgba(0, 0, 0, 0.7);
 }
+
 #settings-panel {
     position: fixed;
     top: 0;
@@ -710,6 +711,34 @@ body.ui-hidden #settings-btn {
     color: rgba(239, 68, 68, 0.9);
 }
 
+/* --- Side-by-side layout --- */
+body.layout-split {
+    display: flex;
+    flex-direction: row;
+}
+body.layout-split #chat-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    transform: none;
+    display: flex;
+    flex-direction: column;
+    padding: 60px 24px 24px;
+    background: rgba(10, 10, 15, 0.95);
+}
+body.layout-split #chat-messages {
+    flex: 1;
+    max-height: none;
+}
+body.layout-split #chat {
+    flex-shrink: 0;
+}
+body.layout-split #heartbeat-indicator,
+body.layout-split #voice-indicator {
+    right: calc(50% + 16px);
+}
 /* Responsive: mobile chat */
 @media (max-width: 640px) {
     #chat-container {
@@ -717,6 +746,9 @@ body.ui-hidden #settings-btn {
         bottom: 0;
         padding: 0 8px env(safe-area-inset-bottom, 8px);
         position: fixed;
+    }
+    body.layout-split #chat-container {
+        width: 100% !important;
     }
     #memory-content {
         flex-direction: column;
