@@ -13,3 +13,5 @@ chromadb
 ollama
 transformers
 torch
+qwen-tts
+flash-attn

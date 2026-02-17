@@ -1,5 +1,6 @@
 """Chat route handlers."""
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends
@@ -37,7 +38,7 @@ async def api_chat(req: ChatRequest):
             expression = await detect_emotion(response)
             if expression:
                 await set_expression(expression)
-            await synthesize_and_broadcast(response)
+            asyncio.create_task(synthesize_and_broadcast(response))
         return {"response": response}
     except Exception as e:
         log.exception("Chat error")

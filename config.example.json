@@ -18,11 +18,16 @@
   },
   "tts": {
     "enabled": false,
+    "provider": "gpt-sovits",
     "base_url": "http://localhost:9880",
     "ref_audio_path": "/path/to/reference.wav",
     "prompt_text": "Reference transcript text",
     "prompt_lang": "en",
-    "text_lang": "en"
+    "text_lang": "en",
+    "qwen3_model": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+    "qwen3_device": "cuda:0",
+    "qwen3_language": "English",
+    "qwen3_instruct": ""
   },
   "heartbeat": {
     "enabled": false,

@@ -41,11 +41,18 @@ class WakeWordConfig:
 @dataclass
 class TTSConfig:
     enabled: bool = False
+    provider: str = "gpt-sovits"  # "gpt-sovits" or "qwen3-tts"
+    # GPT-SoVITS
     base_url: str = "http://localhost:9880"
     ref_audio_path: str = ""
     prompt_text: str = ""
     prompt_lang: str = "en"
     text_lang: str = "en"
+    # Qwen3-TTS
+    qwen3_model: str = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+    qwen3_device: str = "cuda:0"
+    qwen3_language: str = "English"
+    qwen3_instruct: str = ""
 
 
 @dataclass
