@@ -6,7 +6,7 @@ AI chatbot with a 3D VRM avatar. A FastAPI backend controls a Three.js browser f
 
 - 3D VRM avatar with Mixamo animation retargeting and random blinking
 - Any OpenAI-compatible LLM backend
-- Text-to-speech via [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)
+- Text-to-speech via [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) or [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) (local model)
 - Speech-to-text via [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 - Server-side wake word detection via [openWakeWord](https://github.com/dscripka/openWakeWord)
 - Persistent memory and state system (git-tracked)
@@ -14,6 +14,7 @@ AI chatbot with a 3D VRM avatar. A FastAPI backend controls a Three.js browser f
 - Background heartbeat for proactive AI messages
 - Web search via [Brave Search API](https://brave.com/search/api/)
 - Optional sandboxed bash command execution for the LLM
+- Emotion detection with VRM facial expressions
 - Extensible tool system via [MCP](https://modelcontextprotocol.io/) servers
 - Docker support with NVIDIA GPU passthrough
 
@@ -68,13 +69,18 @@ Copy `config.example.json` to `config.json` and adjust to your setup:
     "model_file": "custom.onnx",    // Optional: override model filename
     "auto_start": false             // Auto-enable wake word, hide wake button
   },
-  "tts": {                          // Optional: GPT-SoVITS text-to-speech
+  "tts": {                          // Optional: text-to-speech
     "enabled": false,
-    "base_url": "http://localhost:9880",
+    "provider": "gpt-sovits",       // "gpt-sovits" or "qwen3-tts"
+    "base_url": "http://localhost:9880",  // GPT-SoVITS only
     "ref_audio_path": "/path/to/reference.wav",
     "prompt_text": "Reference transcript text",
     "prompt_lang": "en",
-    "text_lang": "en"
+    "text_lang": "en",
+    "qwen3_model": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",  // Qwen3-TTS only
+    "qwen3_device": "cuda:0",
+    "qwen3_language": "English",
+    "qwen3_instruct": ""            // Voice style description
   },
   "heartbeat": {                     // Optional: proactive messages
     "enabled": false,
@@ -142,13 +148,14 @@ Runtime data (`config.json`, `assets/`, `state/`) is bind-mounted, not baked int
 
 | Tool | Purpose | Required |
 |------|---------|----------|
-| [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) | Text-to-speech synthesis | Optional |
+| [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) | Text-to-speech (external API) | Optional |
+| [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) | Text-to-speech (local model, requires GPU) | Optional |
 | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Speech-to-text transcription | Optional |
 | [openWakeWord](https://github.com/dscripka/openWakeWord) | Server-side wake word detection | Optional |
 | [Brave Search API](https://brave.com/search/api/) | Web search tool for the LLM | Optional |
 | Any OpenAI-compatible API | LLM backend (e.g. LM Studio, ollama, OpenAI) | **Required** |
 
-GPT-SoVITS must be running separately and accessible at the URL configured in `tts.base_url`. faster-whisper runs in-process and requires NVIDIA CUDA libraries for GPU acceleration. openWakeWord runs server-side; the browser streams mic audio over WebSocket for detection.
+GPT-SoVITS must be running separately and accessible at the URL configured in `tts.base_url`. Qwen3-TTS runs in-process and requires an NVIDIA GPU with flash-attn; set `tts.qwen3_instruct` to describe the desired voice style. faster-whisper runs in-process and requires NVIDIA CUDA libraries for GPU acceleration. openWakeWord runs server-side; the browser streams mic audio over WebSocket for detection.
 
 ## Adding Wake Word Models
 

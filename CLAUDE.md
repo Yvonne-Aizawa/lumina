@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Lumina** — AI chatbot with a 3D VRM avatar. FastAPI backend controls a Three.js browser frontend via WebSocket. The LLM can trigger character animations, manage persistent memories, store embeddings in a vector database, create its own sandboxed MCP tool servers, and use external tools via MCP servers. Features include TTS (GPT-SoVITS), STT (faster-whisper), server-side wake word detection (openwakeword), and a background heartbeat system for proactive AI messages.
+**Lumina** — AI chatbot with a 3D VRM avatar. FastAPI backend controls a Three.js browser frontend via WebSocket. The LLM can trigger character animations, manage persistent memories, store embeddings in a vector database, create its own sandboxed MCP tool servers, and use external tools via MCP servers. Features include TTS (GPT-SoVITS or Qwen3-TTS), STT (faster-whisper), server-side wake word detection (openwakeword), emotion detection with VRM facial expressions, and a background heartbeat system for proactive AI messages.
 
 ## Running the Project
 
@@ -27,13 +27,17 @@ No tests or linting are configured.
 
 **`server.py`** — Thin launcher. Imports the FastAPI app from `app/server.py` and runs uvicorn.
 
-**`app/server.py`** — FastAPI app, lifespan orchestrator, and route handlers. The lifespan function calls init functions from the subsystem modules below. Routes: `/` (frontend), `/memory` (vector DB manager), `/api/chat` (POST), `/api/animations` (GET), `/api/backgrounds` (GET), `/api/play/{name}` (POST), `/api/chat/clear` (POST), `/api/chats` (GET/POST), `/api/stt/status` (GET), `/api/transcribe` (POST), `/api/vector` (CRUD), `/ws` (WebSocket). Auth routes are mounted from `app/auth.py`. All API routes use `Depends(require_auth)`; WebSocket checks token via query param; static files, `/`, `/memory`, and `/api/auth/*` are unprotected.
+**`app/server.py`** — FastAPI app and lifespan orchestrator. The lifespan function calls init functions from the subsystem modules below. All API routes use `Depends(require_auth)`; WebSocket checks token via query param; static files, `/`, `/memory`, and `/api/auth/*` are unprotected.
+
+**`app/routes/`** — Route handlers split into modules: `pages.py` (HTML pages), `chat.py` (`/api/chat`, `/api/chats`), `animations.py` (`/api/animations`, `/api/backgrounds`, `/api/play`), `stt.py` (`/api/stt/status`, `/api/transcribe`), `vector.py` (`/api/vector` CRUD), `websocket.py` (`/ws`). Auth routes are mounted from `app/auth.py`.
 
 **`app/config.py`** — Path constants (`PROJECT_DIR`, `ASSETS_DIR`, `ANIMS_DIR`, `MODELS_DIR`, `STATE_DIR`, `VRM_MODEL`, `CONFIG_PATH`) and `load_config()`. Paths are overridable via `state_dir`, `assets_dir`, and `vrm_model` in config.json. Configuration uses dataclasses: `BuiltinToolsConfig` has nested `WebSearchConfig` and `VectorSearchConfig`.
 
 **`app/broadcast.py`** — WebSocket client list and `broadcast()` for sending JSON to all connected browsers. Also contains animation/background helpers: `list_animations()`, `list_backgrounds()`, `play_animation()`, `set_background()`, `notify_tool_call()`.
 
-**`app/tts.py`** — TTS client. `init_tts(config)` loads settings, `synthesize_and_broadcast(text)` calls GPT-SoVITS and broadcasts base64 audio via WebSocket.
+**`app/tts.py`** — TTS client with configurable provider. `init_tts(config)` loads settings (and the Qwen3-TTS model if selected). `synthesize_and_broadcast(text)` synthesizes speech and broadcasts base64 WAV audio via WebSocket. Supports `"gpt-sovits"` (HTTP API) and `"qwen3-tts"` (local model, runs inference in thread executor). TTS is fired as a background task from the chat route so text responses return immediately.
+
+**`app/emotion.py`** — Emotion detection using HuggingFace transformers (`j-hartmann/emotion-english-distilroberta-base`). `init_emotion(config)` loads model at startup. `detect_emotion(text)` maps detected emotions to VRM facial expressions. Runs inference in thread executor.
 
 **`app/stt.py`** — STT model. `init_stt(config)` loads faster-whisper in a thread executor (with NVIDIA CUDA libraries pre-loaded via `ctypes`). `transcribe(audio_bytes)` runs transcription in a thread executor. `is_enabled()` getter returns live state (do not import the `stt_enabled` variable directly — it's set after import time).
 
@@ -131,13 +135,18 @@ The heartbeat uses a completely separate LLM call — no shared conversation his
     "keyword": "hey_jarvis",
     "auto_start": false
   },
-  "tts": {                          // Optional: GPT-SoVITS text-to-speech
+  "tts": {                          // Optional: text-to-speech
     "enabled": false,
-    "base_url": "http://localhost:9880",
+    "provider": "gpt-sovits",       // "gpt-sovits" or "qwen3-tts"
+    "base_url": "http://localhost:9880",  // GPT-SoVITS only
     "ref_audio_path": "/path/to/reference.wav",
     "prompt_text": "...",
     "prompt_lang": "en",
-    "text_lang": "en"
+    "text_lang": "en",
+    "qwen3_model": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",  // Qwen3-TTS only
+    "qwen3_device": "cuda:0",
+    "qwen3_language": "English",
+    "qwen3_instruct": ""
   },
   "heartbeat": {                     // Optional: proactive messages
     "enabled": false,
@@ -226,5 +235,5 @@ Mixamo FBX animations are retargeted to VRM in the browser. `loadMixamoAnimation
 
 ## Dependencies
 
-- **Python:** fastapi, uvicorn[standard], openai, mcp, httpx, chromadb, ollama, faster-whisper, nvidia-cublas-cu12, brave-search-python-client, psutil, openwakeword
+- **Python:** fastapi, uvicorn[standard], openai, mcp, httpx, chromadb, ollama, faster-whisper, nvidia-cublas-cu12, brave-search-python-client, psutil, openwakeword, transformers, torch, qwen-tts, flash-attn, soundfile
 - **Browser (CDN):** three.js 0.162.0, @pixiv/three-vrm 3.3.2, marked.js
